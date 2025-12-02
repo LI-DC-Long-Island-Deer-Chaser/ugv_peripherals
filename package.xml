@@ -7,7 +7,7 @@
   <maintainer email="scokro7141@gmail.com">lidc</maintainer>
   <maintainer email="pedram.kayedpour@stonybrook.edu">PMorghK</maintainer>
   <maintainer email="ruthvick.bandaru@stonybrook.edu">Ruthvick Bandaru</maintainer>
-  <maintainer email="eric.yang2@.stonybrook.edu">Eric Yang</maintainer>
+  <maintainer email="eric.yang2@stonybrook.edu">Eric Yang</maintainer>
   <license>MIT</license>
 
   <test_depend>ament_copyright</test_depend>
