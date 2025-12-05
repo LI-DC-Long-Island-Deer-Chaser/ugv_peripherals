@@ -13,6 +13,9 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
+        (os.path.join('share', package_name, 'resource', 'audio_lists_wav'),
+            glob('resource/audio_lists_wav/*')),
+
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -30,12 +33,12 @@ setup(
             # AUDIO NODES
             'periodic_growl = ugv_peripherals.audio.periodic_growl_node:main',
             'custom_play_audio = ugv_peripherals.audio.custom_play_audio:main',
-            'speaker = ugv_peripherals.audio.speaker_node:main',
+            'speaker = ugv_peripherals.audio.speaker:main',
 
             # SERIAL NODES
             'serial_controller = ugv_peripherals.serial.serial_controller_node:main',
             'serial_echo = ugv_peripherals.serial.serial_echo_node:main',
-            'get_tty_acm = ugv_peripherals.serial.get_tty_acm:main',
+            'serial_toolbox = ugv_peripherals.serial.serial_toolbox:main',
 
             # LIGHTS NODES
             'flashing = ugv_peripherals.lights.flashing_node:main',

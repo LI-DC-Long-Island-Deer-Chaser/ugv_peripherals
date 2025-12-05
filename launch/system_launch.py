@@ -25,41 +25,41 @@ def generate_launch_description():
         
         # run serial controller node
         Node(
-            package='serial_controller',
-            executable='serial_controller_node',
-            name='serial_controller_node',
+            package='ugv_peripherals',
+            executable='serial_controller',
+            name='serial_controller',
             output='screen',
         ),
         
         # run battery node
         Node(
-            package='battery_node',  # Changed from 'battery_test' to match your package
-            executable='battery_test',
-            name='battery_test',
+            package='ugv_peripherals',
+            executable='battery',
+            name='battery',
             output='screen',
         ),
             
         # run audio node
         Node(
-            package='speaker_controller',
-            executable='speaker_node',
-            name='speaker_node',
+            package='ugv_peripherals',
+            executable='speaker',
+            name='speaker',
             output='screen',
         ),
         
         # run periodic_service_caller node
         Node(
-            package='periodic_growl',
-            executable='periodic_growl_node',
-            name='periodic_growl_node',
+            package='ugv_peripherals',
+            executable='periodic_growl',
+            name='periodic_growl',
             output='screen',
         ),
         
         # run flashing lights node
         Node(
-            package='lights',
-            executable='flashing_node',
-            name='flashing_node',
+            package='ugv_peripherals',
+            executable='flashing',
+            name='flashing',
             output='screen',
         ),
     ])
