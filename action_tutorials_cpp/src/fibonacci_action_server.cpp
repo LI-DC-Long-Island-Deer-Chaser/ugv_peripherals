@@ -55,7 +55,7 @@ namespace action_tutorials_cpp
 		{
 			using namespace std::placeholders;
 			// this needs to return quickly to avoid blocking the executor, so spin up a new thread
-			std::thread{std::bind(&FibonacciActionServer::execute, this, _1), goal_handle}.detach();
+			std::thread(std::bind(&FibonacciActionServer::execute, this, _1), goal_handle).detach();
 		}
 
 		void execute(const std::shared_ptr<GoalHandleFibonacci> goal_handle)
