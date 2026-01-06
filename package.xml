@@ -3,21 +3,21 @@
 <package format="3">
   <name>ugv_peripherals</name>
   <version>0.0.1</version>
-  <description>This package contains software for testing and controlling all of the rover peripherals.</description>
-  <maintainer email="scokro7141@gmail.com">lidc</maintainer>
-  <maintainer email="pedram.kayedpour@stonybrook.edu">PMorghK</maintainer>
-  <maintainer email="ruthvick.bandaru@stonybrook.edu">Ruthvick Bandaru</maintainer>
-  <maintainer email="eric.yang2@stonybrook.edu">Eric Yang</maintainer>
+  <description>ros2 package containing UGV peripherals.</description>
+  <maintainer email="pedram.kayedpour@stonybrook.edu">Pedram Kayedpour</maintainer>
   <license>MIT</license>
 
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
-  <test_depend>python3-pytest</test_depend>
+  <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>ros2launch</exec_depend>
+  <depend>ugv_interfaces</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>rclcpp_components</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
 
   <export>
-    <build_type>ament_python</build_type>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>
