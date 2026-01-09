@@ -5,8 +5,13 @@
 #include <mutex>
 #include <condition_variable>
 
-// Include rclcpp and the custom action server interfaces
+// Include Custom Interfaces that this node depends on
 #include "ugv_interfaces/action/blink_lights.hpp"
+#include "ugv_interfaces/srv/strip_lights.hpp"
+#include "ugv_interfaces/srv/glow_lights.hpp"
+#include "ugv_interfaces/srv/head_lights.hpp"
+
+// Include all of the necessary ros client library things
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -18,12 +23,16 @@ class LightsNode : public rclcpp::Node
         // Namespace Translations
         using BlinkLights = ugv_interfaces::action::BlinkLights;
         using GoalHandleBlinkLights = rclcpp_action::ServerGoalHandle<BlinkLights>;
+        using StripLights = ugv_interfaces::srv::StripLights;
+        using HeadLights = ugv_interfaces::srv::HeadLights;
+        using GlowLights = ugv_interfaces::srv::GlowLights;
 
         // Default Node Initialization
         explicit LightsNode (const rclcpp::NodeOptions &options = rclcpp::NodeOptions())
         : Node("lights_server", options)
         {
-            this->action_server_ = rclcpp_action::create_server<BlinkLights>(
+            // Action server for blinking the lights
+            action_server_ = rclcpp_action::create_server<BlinkLights>(
                 this, 
                 "blinklights",
                 // Handle Goal Callback
@@ -42,8 +51,34 @@ class LightsNode : public rclcpp::Node
                     this->handle_accepted(goal_handle);
                 }
             );
+            // Successful action server init
+            RCLCPP_INFO(this->get_logger(), "blinklights Action server inited sucessfully");
+            
+            // Service to control the StripLights
+            strip_lights_service_ = this->create_service<ugv_interfaces::srv::StripLights>
+            ("strip_lights_service", 
+            [this]
+            (const std::shared_ptr<StripLights::Request> request, std::shared_ptr<StripLights::Response> response)
+            {this->strip_lights_callback(request, response);});
+            RCLCPP_INFO(this->get_logger(), "strip_lights_service sucessfully created");
 
-            // Start ONE worker thread that will execute goals sequentially
+            // Service to control the HeadLights
+            head_lights_service_ = this->create_service<ugv_interfaces::srv::HeadLights>
+            ("head_lights_service", 
+            [this]
+            (const std::shared_ptr<HeadLights::Request> request, std::shared_ptr<HeadLights::Response> response)
+            {this->head_lights_callback(request, response);});
+            RCLCPP_INFO(this->get_logger(), "head_lights_service sucessfully created");
+
+            // Service to control the GlowLights
+            glow_lights_service_ = this->create_service<ugv_interfaces::srv::GlowLights>
+            ("glow_lights_service", 
+            [this]
+            (const std::shared_ptr<GlowLights::Request> request, std::shared_ptr<GlowLights::Response> response)
+            {this->glow_lights_callback(request, response);});
+            RCLCPP_INFO(this->get_logger(), "glow_lights_service sucessfully created");
+
+            // Start ONE worker thread that will execute goals for the action server
             worker_ = std::thread([this]() { this->worker_loop(); });
         }
 
@@ -74,6 +109,11 @@ class LightsNode : public rclcpp::Node
 
         // Create a shared pointer that keeps the action server alive
         rclcpp_action::Server<BlinkLights>::SharedPtr action_server_;
+
+        // Shared pointers for Service Servers
+        rclcpp::Service<StripLights>::SharedPtr strip_lights_service_;
+        rclcpp::Service<HeadLights>::SharedPtr head_lights_service_;
+        rclcpp::Service<GlowLights>::SharedPtr glow_lights_service_;
 
         // Function to handle the case when a goal is sent to the action server
         rclcpp_action::GoalResponse handle_goal(
@@ -126,6 +166,7 @@ class LightsNode : public rclcpp::Node
                     // Lock the mutex before doing the work
                     std::unique_lock<std::mutex> lk(m_);
                     
+                    // Wait until there is a new pending goal or a stop command has been received
                     cv_.wait(lk, [this](){return stop_worker_ || pending_goal_ != nullptr;});
 
                     // Get out of the worker loop 
@@ -154,7 +195,7 @@ class LightsNode : public rclcpp::Node
             }
         }
 
-        void execute()
+        void execute(const std::shared_ptr<GoalHandleBlinkLights> &goal_handle)
         {
             // Print Log Message
             RCLCPP_INFO(this->get_logger(), "Executing goal (placeholder)");
@@ -197,5 +238,103 @@ class LightsNode : public rclcpp::Node
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
             // If ROS is shutting down, you can abort/return.
+        }
+
+        // Service servers callbacks
+        // Strip Lights Callback
+        void strip_lights_callback(const std::shared_ptr<StripLights::Request> request, std::shared_ptr<StripLights::Response> response)
+        {
+            // Check if we need to turn on or off the light
+            if (request->on_off) {
+                // Package and send the hex code
+                request->color;
+                request->led_num;
+
+                // TODO: OPCODE PACKAGING AND SENDING
+
+                // Response
+                response->result = true;
+                response->debug_msg = "Success";
+
+                // Logger
+                RCLCPP_INFO(this->get_logger(), "Turned on led_num:%d, with color:%s on the strip lights", request->led_num, request->color);
+            }
+            else {
+                // Send the hex code to turn off said LED
+
+                // TODO: OPCODE PACKAGING AND SENDING
+    
+                // Response
+                response->result = true;
+                response->debug_msg = "Success";
+
+                // Logger
+                RCLCPP_INFO(this->get_logger(), "Turned off led_num:%d on the strip lights", request->led_num);
+            }
+        }
+
+        // Head Lights Callback
+        void head_lights_callback(const std::shared_ptr<HeadLights::Request> request, std::shared_ptr<HeadLights::Response> response)
+        {
+            // Check if we need to turn on or off the light
+            if (request->on_off) {
+                // Package and send the hex code
+                request->color;
+                
+                // TODO: OPCODE PACKAGING AND SENDING
+
+
+                // Response
+                response->result = true;
+                response->debug_msg = "Success";
+
+                // Logger
+                RCLCPP_INFO(this->get_logger(), "Turned on headlights with color:%s", request->color);
+            }
+            else {
+                // Send the hex code to turn off the headlights
+                
+                // TODO: OPCODE PACKAGING AND SENDING
+
+                // Response
+                response->result = true;
+                response->debug_msg = "Success";
+
+                // Logger
+                RCLCPP_INFO(this->get_logger(), "Turned off head lights");
+            }
+            
+        }
+
+        // Glow Lights Callback
+        void glow_lights_callback(const std::shared_ptr<GlowLights::Request> request, std::shared_ptr<GlowLights::Response> response)
+        {
+            // Check if we need to turn on or off the light
+            if (request->on_off) {
+                // Package and send the hex code
+                request->brightness;
+
+                // TODO: OPCODE PACKAGING AND SENDING
+
+                // Response
+                response->result = true;
+                response->debug_msg = "Success";
+
+                // Logger
+                RCLCPP_INFO(this->get_logger(), "Turned on glowlights with brightness:%d", request->brightness);
+            }
+            else {
+                // Send the hex code to turn off the headlights
+
+                // TODO: OPCODE PACKAGING AND SENDING
+    
+                // Response
+                response->result = true;
+                response->debug_msg = "Success";
+
+                // Logger
+                RCLCPP_INFO(this->get_logger(), "Turned off glowlights");
+            }
+            
         }
 };
