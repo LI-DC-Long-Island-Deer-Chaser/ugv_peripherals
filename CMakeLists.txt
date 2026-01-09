@@ -7,9 +7,16 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(ugv_interfaces REQUIRED)
+
+# Add executable
+add_executable(lightserver src/lights_server.cpp)
+ament_target_dependencies(lightserver rclcpp rclcpp_action rclcpp_components ugv_interfaces)
+install(TARGETS lightserver
+        DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

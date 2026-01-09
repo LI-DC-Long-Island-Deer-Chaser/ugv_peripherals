@@ -4,6 +4,8 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
+#include <algorithm>
 
 // Include Custom Interfaces that this node depends on
 #include "ugv_interfaces/action/blink_lights.hpp"
@@ -123,9 +125,9 @@ class LightsNode : public rclcpp::Node
         {
             // Debug message
             RCLCPP_INFO(this->get_logger(), 
-            "Recieved goal request with period: %d, duration: %d, color: %s, striplights: %d, headlights: %d, glowlights: %d", 
-            goal->period, goal->duration, goal->color, goal->striplights, goal->headlights, goal->glowlights
-            )
+            "Recieved goal request with duration: %d, rate: %lf, color: %s, striplights: %d, headlights: %d, glowlights: %d", 
+            goal->duration, goal->rate, goal->color.c_str(), goal->striplights, goal->headlights, goal->glowlights
+            );
             // Void the unused parameter to ensure the compiler doesnt complain
             (void)uuid;
             // Accept and execute the goal, reject if the request is invalid
@@ -195,50 +197,85 @@ class LightsNode : public rclcpp::Node
             }
         }
 
-        void execute(const std::shared_ptr<GoalHandleBlinkLights> &goal_handle)
+        void execute(const std::shared_ptr<GoalHandleBlinkLights> & goal_handle)
         {
-            // Print Log Message
-            RCLCPP_INFO(this->get_logger(), "Executing goal (placeholder)");
-           
-            // auto feedback = std::make_shared<BlinkLights::Feedback>();
-            // auto result   = std::make_shared<BlinkLights::Result>();
-
-            // Skeleton loop: keep it responsive to cancel + preempt
-            while (rclcpp::ok()) {
-
-            // 1) Cancel check (client requested cancel)
-            if (goal_handle->is_canceling()) {
-                // TODO:
-                // result->... = ...
-                // goal_handle->canceled(result);
-                RCLCPP_INFO(this->get_logger(), "Goal canceled (placeholder)");
+            // Logger
+            RCLCPP_INFO(get_logger(), "Executing goal");
+            
+            // Created shared pointers to store the goal, feedback and results
+            const auto goal = goal_handle->get_goal();
+            auto feedback = std::make_shared<BlinkLights::Feedback>();
+            auto result   = std::make_shared<BlinkLights::Result>();
+                
+            // Variables to hold start and end time
+            const auto start_time = this->now();
+            const auto end_time   = start_time + rclcpp::Duration::from_seconds(
+                static_cast<double>(goal->duration));
+            
+            // Get the rate from the request (Convert float 64 to double)
+            const double hz = static_cast<double>(goal->rate);
+            // Should not perform action with this type of request
+            if (hz <= 0.0) {
+                result->finished = false;
+                result->debug_msg = "Invalid rate <= 0";
+                goal_handle->abort(result);
                 return;
             }
 
-            // 2) Preempt check: if a newer goal became active, stop this one
-            {
-                std::lock_guard<std::mutex> lk(m_);
-                if (active_goal_ != goal_handle) {
-                // TODO:
-                // goal_handle->abort(result);
-                RCLCPP_WARN(this->get_logger(), "Goal preempted by newer goal (placeholder)");
+            // Create a rate object
+            rclcpp::Rate rate(hz);
+
+            // While ROS is ok and there is still time remaining
+            while (rclcpp::ok() && this->now() < end_time) {
+
+                // Cancel check
+                if (goal_handle->is_canceling()) {
+                result->finished = false;
+                result->debug_msg = "Goal cancelled";
+                goal_handle->canceled(result);
+                RCLCPP_INFO(get_logger(), "Goal canceled");
                 return;
                 }
+
+                // Preempt check (with your worker-thread model, use pending_goal_)
+                {
+                    std::lock_guard<std::mutex> lk(m_);
+                    if (pending_goal_) {
+                        result->finished = false;
+                        result->debug_msg = "Preempted by newer goal";
+                        goal_handle->abort(result);
+                        RCLCPP_WARN(get_logger(), "Preempting current goal");
+                        return;
+                    }
+                }
+
+                // --- blink step ---
+                // send ON opcode
+                // ...
+                rate.sleep();
+                // send OFF opcode
+                // ...
+
+                // Feedback (example: seconds remaining as double)
+                auto remaining = end_time - this->now();
+                feedback->time_remaining = std::max(0.0, remaining.seconds());
+                goal_handle->publish_feedback(feedback);
             }
 
-            // 3) ---- YOUR ACTION WORK GOES HERE ----
-            // - blink lights / sleep / publish feedback / check completion
-            //
-            // Example structure:
-            //   do_one_step();
-            //   goal_handle->publish_feedback(feedback);
-            //   if (done) { goal_handle->succeed(result); return; }
-
-            // Placeholder so this doesn't busy-spin if you test it accidentally
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // If ROS is not okay
+            if (!rclcpp::ok()) {
+                result->finished = false;
+                result->debug_msg = "ROS shutting down";
+                goal_handle->abort(result);
+                return;
             }
-            // If ROS is shutting down, you can abort/return.
+            
+            // Successful execution of the node
+            result->finished = true;
+            result->debug_msg = "Done";
+            goal_handle->succeed(result);
         }
+
 
         // Service servers callbacks
         // Strip Lights Callback
@@ -257,7 +294,7 @@ class LightsNode : public rclcpp::Node
                 response->debug_msg = "Success";
 
                 // Logger
-                RCLCPP_INFO(this->get_logger(), "Turned on led_num:%d, with color:%s on the strip lights", request->led_num, request->color);
+                RCLCPP_INFO(this->get_logger(), "Turned on led_num:%d, with color:%s on the strip lights", request->led_num, request->color.c_str());
             }
             else {
                 // Send the hex code to turn off said LED
@@ -289,7 +326,7 @@ class LightsNode : public rclcpp::Node
                 response->debug_msg = "Success";
 
                 // Logger
-                RCLCPP_INFO(this->get_logger(), "Turned on headlights with color:%s", request->color);
+                RCLCPP_INFO(this->get_logger(), "Turned on headlights with color:%s", request->color.c_str());
             }
             else {
                 // Send the hex code to turn off the headlights
@@ -338,3 +375,12 @@ class LightsNode : public rclcpp::Node
             
         }
 };
+
+// Main function (No Composability added yet)
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<LightsNode>());
+  rclcpp::shutdown();
+  return 0;
+}
