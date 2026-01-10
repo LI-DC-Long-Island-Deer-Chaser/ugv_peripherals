@@ -25,6 +25,119 @@ using namespace std;
 
 namespace ugv_peripherals
 {
+    class SerialDevice
+    {
+    public:
+        // SerialDevice constructor function
+        SerialDevice()
+        {
+            // code for the constructor function goes here
+            // Hardcoded, known symlink path
+            const std::string device_path = "/dev/serial/by-id/usb-QinHeng_Electronics_USB-Serial-if00";
+
+            // Open the device
+            this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
+            if (this->fd_ < 0) {
+                cout << "OPENING THE QINHENG DEVICE FAILED. IT IS NOT PLUGGED IN!" << endl;
+                SerialDevice::~SerialDevice();
+            }
+
+            // Configure serial port
+            // set tty so that later on we can use it
+            struct termios tty;
+            memset(&tty, 0, sizeof(tty));
+
+            if (tcgetattr(this->fd_, &tty) != 0) {
+                close(this->fd_);
+                cout << "Could not configure the USB to UART adapter!" << endl;
+            }
+
+            // setting the baud rate to 115200
+            cfsetospeed(&tty, B115200);
+            cfsetispeed(&tty, B115200);
+
+            // setting c flags
+            tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+            tty.c_cflag &= ~PARENB;
+            tty.c_cflag &= ~CSTOPB;
+            tty.c_cflag &= ~CRTSCTS;
+            tty.c_cflag |= (CLOCAL | CREAD);
+            tty.c_lflag = 0;
+            tty.c_oflag = 0;
+            tty.c_iflag = 0;
+            tty.c_cc[VMIN]  = 1;
+            tty.c_cc[VTIME] = 5;
+
+            if (tcsetattr(this->fd_, TCSANOW, &tty) != 0) {
+                cout << "Could not configure the USB to UART adapter!" << endl;
+                close(this->fd_);
+            }
+        }
+
+        ~SerialDevice()
+        {
+            close(this->fd_);
+            cout << "Destructor called";
+        }
+
+        int serial_write(uint8_t byte1, uint8_t byte2, std::string selected_color)
+        {
+            // Using a scoped lock for serial controller use.
+            // 0:  Bright green
+            // 1:  Dim green
+            // 2:  Very dark green
+            // 3:  Yellow
+            // 4:  Orange
+            // 5.  Bright red
+            // 6:  Dark blue
+            // 7:  Blue
+            // 8:  Cyan
+            // 9:  Magenta
+            // 10: Dark Red
+            // 11: Light Blue
+            // 12: Purple
+            // 13: Pink
+            // 14: White
+            // 15: Off
+            std::unordered_map<std::string, uint8_t> colors;
+            colors["green3"]  = 0;
+            colors["green2"]  = 1;
+            colors["green1"]  = 2;
+            colors["yellow"]  = 3;
+            colors["orange"]  = 4;
+            colors["red2"]    = 5;
+            colors["blue1"]   = 6;
+            colors["blue2"]   = 7;
+            colors["cyan"]    = 8;
+            colors["magenta"] = 9;
+            colors["red1"]    = 10;
+            colors["blue3"]   = 11;
+            colors["purple"]  = 12;
+            colors["pink"]    = 13;
+            colors["white"]   = 14;
+            colors["off"]     = 15;
+
+            // 010X to turn on all the headlights, where X is color
+            // 011X to turn on all the strip lights, where X is color
+            // 012X to turn on the glow lights, where X is brightness
+            uint8_t bytes_to_be_sent[2] = {byte1, (uint8_t)((byte2 << 4) | colors[selected_color])};
+            ssize_t n = write(this->fd_, bytes_to_be_sent, 2);
+
+            if (n < 0) {
+                // errors:
+                return 1;
+            }
+
+            // no errors:
+            cout << "Successfully sent payload [" << bytes_to_be_sent[1] << "] [" << bytes_to_be_sent[0] << "]" << endl;
+            return 0;
+        }
+
+    private:
+        int fd_ = -1;
+    };
+
+
     class LightsController : public rclcpp::Node
     {
         public:
@@ -65,46 +178,8 @@ namespace ugv_peripherals
                         bind(&LightsController::strip_lights_callback, this, _1, _2)
                     );
 
+                this->s_ = SerialDevice();
 
-                    // Hardcoded, known symlink path
-                    const std::string device_path = "/dev/serial/by-id/usb-QinHeng_Electronics_USB-Serial-if00";
-
-                    // Open the device
-                    this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
-                    if (this->fd_ < 0) {
-                        RCLCPP_ERROR(this->get_logger(), "OPENING THE QINHENG DEVICE FAILED. IT IS NOT PLUGGED IN!");
-                    }
-
-                    // Configure serial port
-                    // set tty so that later on we can use it
-                    struct termios tty;
-                    memset(&tty, 0, sizeof(tty));
-
-                    if (tcgetattr(this->fd_, &tty) != 0) {
-                        close(this->fd_);
-                        RCLCPP_ERROR(this->get_logger(), "Could not configure the USB to UART adapter!");
-                    }
-
-                    // setting the baud rate to 115200
-                    cfsetospeed(&tty, B115200);
-                    cfsetispeed(&tty, B115200);
-
-                    // setting c flags
-                    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
-                    tty.c_cflag &= ~PARENB;
-                    tty.c_cflag &= ~CSTOPB;
-                    tty.c_cflag &= ~CRTSCTS;
-                    tty.c_cflag |= (CLOCAL | CREAD);
-                    tty.c_lflag = 0;
-                    tty.c_oflag = 0;
-                    tty.c_iflag = 0;
-                    tty.c_cc[VMIN]  = 1;
-                    tty.c_cc[VTIME] = 5;
-
-                    if (tcsetattr(this->fd_, TCSANOW, &tty) != 0) {
-                        RCLCPP_ERROR(this->get_logger(), "Could not configure the USB to UART adapter!");
-                        close(this->fd_);
-                    }
             }
 
         private:
@@ -117,12 +192,10 @@ namespace ugv_peripherals
             mutex strip_mutex_;
             mutex glow_mutex_;
 
-            // One action server used for blinking the lights in a synchronos manner.
-            int fd_ = -1;
-
             mutex light_mutex_;
             rclcpp_action::Server<BlinkLights>::SharedPtr action_server_;
 
+            SerialDevice s_;
 
             // 3 Service servers for head/strip/glow lights control. corresponding topic must be used.
             rclcpp::Service<HeadLights>::SharedPtr head_lights_service_;
@@ -296,46 +369,6 @@ namespace ugv_peripherals
                 RCLCPP_INFO(this->get_logger(), "what to flash? Strip: %d, Glow: %d, Head: %d", goal->striplights, goal->glowlights, goal->headlights);
                 RCLCPP_INFO(this->get_logger(), "Ready to start, waiting for lights to become available");
     
-                // Using a scoped lock for serial controller use.
-                // 0:  Bright green
-                // 1:  Dim green
-                // 2:  Very dark green
-                // 3:  Yellow
-                // 4:  Orange
-                // 5.  Bright red
-                // 6:  Dark blue
-                // 7:  Blue
-                // 8:  Cyan
-                // 9:  Magenta
-                // 10: Dark Red
-                // 11: Light Blue
-                // 12: Purple
-                // 13: Pink
-                // 14: White
-                // 15: Off
-                std::unordered_map<std::string, uint8_t> colors;
-                colors["green3"]  = 0;
-                colors["green2"]  = 1;
-                colors["green1"]  = 2;
-                colors["yellow"]  = 3;
-                colors["orange"]  = 4;
-                colors["red2"]    = 5;
-                colors["blue1"]   = 6;
-                colors["blue2"]   = 7;
-                colors["cyan"]    = 8;
-                colors["magenta"] = 9;
-                colors["red1"]    = 10;
-                colors["blue3"]   = 11;
-                colors["purple"]  = 12;
-                colors["pink"]    = 13;
-                colors["white"]   = 14;
-                colors["off"]     = 15;
-                // 010X to turn on all the headlights, where X is color
-                // 011X to turn on all the strip lights, where X is color
-                // 012X to turn on the glow lights, where X is brightness
-                std::vector<uint8_t> bytes_to_be_sent;
-
-                ssize_t n;
 
                 // using a scoped lock to use the lights on the rover making sure they are not taken.
                 {
@@ -352,26 +385,16 @@ namespace ugv_peripherals
                             return;
                         }
 
-                        bytes_to_be_sent.clear();
-                        bytes_to_be_sent.push_back(1);
-                        bytes_to_be_sent.push_back(colors[goal->color]);
-
-                        n = write(this->fd_, bytes_to_be_sent.data(), bytes_to_be_sent.size());
-
+                        this->s_.serial_write(1, 0, "white");
                         // wait(0.25)
                         usleep(250000);
+                        this->s_.serial_write(1, 1, "white");
+
                         // TODO because we have this manually added
                         // sleep so that the nuvoton can pick up both commands
                         // we need to fix the code's time remaining and rate.
 
-                        bytes_to_be_sent.clear();
-                        bytes_to_be_sent.push_back(1);
-                        bytes_to_be_sent.push_back((1<<4) | colors[goal->color]);
 
-
-                        if (n < 0) {
-                            RCLCPP_INFO(this->get_logger(), "Successfully sent payload %x%x", bytes_to_be_sent[0], bytes_to_be_sent[1]);
-                        }
 
                         time_remaining -= 1 / goal->rate;
                         goal_handle->publish_feedback(feedback);
@@ -379,11 +402,11 @@ namespace ugv_peripherals
                         loop_rate.sleep();
                     }
 
-                    bytes_to_be_sent.clear();
-                    bytes_to_be_sent.push_back(1);
-                    bytes_to_be_sent.push_back(15);
 
-                    n = write(this->fd_, bytes_to_be_sent.data(), bytes_to_be_sent.size());
+                    this->s_.serial_write(1, 0, "off");
+                    // wait(0.25)
+                    usleep(250000);
+                    this->s_.serial_write(1, 1, "off");
 
                     // wait(0.25)
                     usleep(250000);
@@ -391,9 +414,7 @@ namespace ugv_peripherals
                     // sleep so that the nuvoton can pick up both commands
                     // we need to fix the code's time remaining and rate.
 
-                    bytes_to_be_sent.clear();
-                    bytes_to_be_sent.push_back(1);
-                    bytes_to_be_sent.push_back((1<<4) | 15);
+
 
                     if (rclcpp::ok())
                     {
