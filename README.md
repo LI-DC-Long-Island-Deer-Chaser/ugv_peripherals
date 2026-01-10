@@ -6,4 +6,3 @@ external hardware of the rover.
 ## Dependencies
 
 -[ugv_interfaces]()
--

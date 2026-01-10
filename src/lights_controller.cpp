@@ -5,6 +5,10 @@
 #include <string>
 
 #include "ugv_interfaces/action/blink_lights.hpp"
+#include "ugv_interfaces/srv/strip_lights.hpp"
+#include "ugv_interfaces/srv/glow_lights.hpp"
+#include "ugv_interfaces/srv/head_lights.hpp"
+
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -16,37 +20,77 @@ namespace ugv_peripherals
     class LightsController : public rclcpp::Node
     {
         public:
+            // Action server namespace.
             using BlinkLights = ugv_interfaces::action::BlinkLights;
             using HandleBlinkLights = rclcpp_action::ServerGoalHandle<BlinkLights>;
 
-            explicit LightsController(const rclcpp::NodeOptions &option = rclcpp::NodeOptions()) : Node("lights_controller", option)
+            // Service server namespace.
+            using StripLights = ugv_interfaces::srv::StripLights;
+            using HeadLights = ugv_interfaces::srv::HeadLights;
+            using GlowLights = ugv_interfaces::srv::GlowLights;
+
+            explicit LightsController(const rclcpp::NodeOptions &option = rclcpp::NodeOptions())
+            : Node("lights_controller", option)
             {
                 using namespace placeholders;
 
-                this->action_server_ = 
-                    rclcpp_action::create_server<BlinkLights>
-                    (
+                this->action_server_ = rclcpp_action::create_server<BlinkLights>(
                         this,
-                        "blink_lights",
-                        bind(&LightsController::handle_goal, this, _1, _2),
-                        bind(&LightsController::handle_cancel, this, _1),
-                        bind(&LightsController::handle_accepted, this, _1)
+                        "ugv_peripherals/blink_lights",
+                        bind(&LightsController::action_handle_goal, this, _1, _2),
+                        bind(&LightsController::action_handle_cancel, this, _1),
+                        bind(&LightsController::action_handle_accepted, this, _1)
+                    );
+
+                this->head_lights_service_ = this->create_service<HeadLights>(
+                        "ugv_peripherals/head_lights",
+                        bind(&LightsController::head_lights_callback, this, _1, _2)
+                    );
+
+                this->glow_lights_service_ = this->create_service<GlowLights>(
+                        "ugv_peripherals/glow_lights",
+                        bind(&LightsController::glow_lights_callback, this, _1, _2)
+                    );
+
+                this->strip_lights_service_ = this->create_service<StripLights>(
+                        "ugv_peripherals/strip_lights",
+                        bind(&LightsController::strip_lights_callback, this, _1, _2)
                     );
             }
 
         private:
-            mutex light_mutex_;
+            // The main limited resource here is the serial controller connected on board.
+            // `serial_mutex_` is used for this.
+            // All other mutexes are used to prevent service call overlap (although this
+            // functionallity is handled in rclcpp and correct use of callback groups and QOS).
+            mutex serial_mutex_;
+            mutex head_mutex_;
+            mutex strip_mutex_;
+            mutex glow_mutex_;
+
+            // One action server used for blinking the lights in a synchronos manner.
             rclcpp_action::Server<BlinkLights>::SharedPtr action_server_;
 
-            rclcpp_action::GoalResponse handle_goal(const rclcpp_action::GoalUUID &uuid, shared_ptr<const BlinkLights::Goal> goal)
+
+            // 3 Service servers for head/strip/glow lights control. corresponding topic must be used.
+            rclcpp::Service<HeadLights>::SharedPtr head_lights_service_;
+            rclcpp::Service<StripLights>::SharedPtr strip_lights_service_;
+            rclcpp::Service<GlowLights>::SharedPtr glow_lights_service_;
+
+            
+            // Class Functions start here, we particularly have 6 different call back functions.
+            // 3 call back functions corresponding to the action server.
+            // 3 call back functions corresponding to head/glow/strip light service servers.
+            rclcpp_action::GoalResponse action_handle_goal(const rclcpp_action::GoalUUID             &uuid, 
+                                                                 shared_ptr<const BlinkLights::Goal> goal)
             {
                 RCLCPP_INFO(this->get_logger(), "Recieved Goal Request. LMAO WE ARE SO COOKED.");
                 (void)uuid;
                 (void)goal;
 
-                if (light_mutex_.try_lock())
+                if (serial_mutex_.try_lock())
                 {
-                    light_mutex_.unlock();
+                    serial_mutex_.unlock();
                     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
                 }
                 else 
@@ -57,7 +101,7 @@ namespace ugv_peripherals
 
             }
             
-            rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<HandleBlinkLights> goal_handle)
+            rclcpp_action::CancelResponse action_handle_cancel(const std::shared_ptr<HandleBlinkLights> goal_handle)
             {
                 RCLCPP_INFO(this->get_logger(), "Received request to cancel goal.");
                 (void)goal_handle;
@@ -65,7 +109,7 @@ namespace ugv_peripherals
                 return rclcpp_action::CancelResponse::ACCEPT;
             }
 
-            void handle_accepted(const std::shared_ptr<HandleBlinkLights> goal_handle)
+            void action_handle_accepted(const std::shared_ptr<HandleBlinkLights> goal_handle)
             {
                 thread([this, goal_handle]()
                 {
@@ -73,6 +117,115 @@ namespace ugv_peripherals
                 }).detach();
             }
 
+            // Service server callback handling. 
+            // Mutexes are used to insure serial controller is useable and no other servers are running.
+            void strip_lights_callback(const std::shared_ptr<StripLights::Request>  request, 
+                                             std::shared_ptr<StripLights::Response> response)
+            {
+                if (try_lock(serial_mutex_, strip_mutex_) == -1)
+                {
+                    if (request->on_off) 
+                    {
+                        // TODO: CODE GOES HERE
+
+                        response->result = true;
+                        response->debug_msg = "Success";
+
+                        RCLCPP_INFO(this->get_logger(), "Turned on led_num:%d, with color: %s on the strip lights.", request->led_num, request->color.c_str());
+                    }
+                    else 
+                    {
+                        // TODO: CODE GOES HERE
+
+                        response->result = true;
+                        response->debug_msg = "Success";
+
+                        RCLCPP_INFO(this->get_logger(), "Turned off led_num: %d on the strip lights.", request->led_num);
+                    }
+
+                    serial_mutex_.unlock();
+                    strip_mutex_.unlock();
+                }
+                else
+                {
+                    response->result = false;
+                    response->debug_msg = "In Use";
+                    RCLCPP_INFO(this->get_logger(), "Strip lights are in use. responding with flase.");
+                }
+            }
+
+            void head_lights_callback(const std::shared_ptr<HeadLights::Request>  request, 
+                                            std::shared_ptr<HeadLights::Response> response)
+            {
+                if (try_lock(serial_mutex_, head_mutex_) == -1)
+                {
+                    if (request->on_off) 
+                    {
+                        // TODO: CODE GOES HERE
+
+                        response->result = true;
+                        response->debug_msg = "Success";
+
+                        RCLCPP_INFO(this->get_logger(), "Turned on headlights with color: %s.", request->color.c_str());
+                    }
+                    else 
+                    {
+                        // TODO: CODE GOES HERE
+
+                        response->result = true;
+                        response->debug_msg = "Success";
+
+                        RCLCPP_INFO(this->get_logger(), "Turned off head lights.");
+                    }
+
+                    serial_mutex_.unlock();
+                    head_mutex_.unlock();
+                }
+                else
+                {
+                    response->result = false;
+                    response->debug_msg = "In Use";
+                    RCLCPP_INFO(this->get_logger(), "Head lights are in use. responding with flase.");
+                }
+            }
+            void glow_lights_callback(const std::shared_ptr<GlowLights::Request>  request, 
+                                            std::shared_ptr<GlowLights::Response> response)
+            {
+                if (try_lock(serial_mutex_, glow_mutex_) == -1)
+                {
+                    if (request->on_off)
+                    {
+                        // TODO: CODE GOES HERE
+
+                        response->result = true;
+                        response->debug_msg = "Success";
+
+                        RCLCPP_INFO(this->get_logger(), "Turned on glowlights with brightness:%d", request->brightness);
+                    }
+                    else
+                    {
+                        // TODO: CODE GOES HERE
+
+                        response->result = true;
+                        response->debug_msg = "Success";
+
+                        RCLCPP_INFO(this->get_logger(), "Turned off glowlights");
+                    }
+
+                    serial_mutex_.unlock();
+                    glow_mutex_.unlock();
+                }
+                else
+                {
+                    response->result = false;
+                    response->debug_msg = "In Use";
+                    RCLCPP_INFO(this->get_logger(), "Glow lights are in use. responding with flase.");
+                }
+            }
+    
+            // Main thread of the action server.
+            // Runs for as long as the lights need blinking.
+            // Turns off all lights at the end.
             void execute_blink_lights(const std::shared_ptr<HandleBlinkLights> goal_handle)
             {
                 const auto goal = goal_handle->get_goal();
@@ -91,9 +244,9 @@ namespace ugv_peripherals
                 RCLCPP_INFO(this->get_logger(), "what to flash? Strip: %d, Glow: %d, Head: %d", goal->striplights, goal->glowlights, goal->headlights);
                 RCLCPP_INFO(this->get_logger(), "Ready to start, waiting for lights to become available");
     
-                // using a scoped lock to use the lights on the rover making sure they are not taken.
+                // Using a scoped lock for serial controller use.
                 {
-                    scoped_lock lock(light_mutex_);
+                    scoped_lock lock(serial_mutex_, head_mutex_, strip_mutex_, glow_mutex_);
                     
                     while(time_remaining > 0 && rclcpp::ok())
                     {
@@ -105,8 +258,6 @@ namespace ugv_peripherals
                             RCLCPP_INFO(this->get_logger(), "Goal Canceled");
                             return;
                         }
-
-                        // Flash them titties.
                         
                         time_remaining -= 1 / goal->rate;
                         goal_handle->publish_feedback(feedback);
