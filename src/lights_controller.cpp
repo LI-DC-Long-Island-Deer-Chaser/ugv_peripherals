@@ -72,6 +72,9 @@ namespace ugv_peripherals
                 cout << "Could not configure the USB to UART adapter!" << endl;
                 close(this->fd_);
             }
+
+            // start it empty
+            this->internal_vector_.clear();
         }
 
         ~SerialDevice()
@@ -133,8 +136,26 @@ namespace ugv_peripherals
             return 0;
         }
 
+        uint8_t* serial_read()
+        {
+            ssize_t n = read(this->fd_, this->internal_vector_.data(), this->internal_vector_.size());
+
+            if (n < 0) {
+                perror("serial read failed");
+
+                // returns NULL address if there is no read
+                return NULL;
+            }
+
+            // returns the pure data of the internal vector
+            // if there even is data to be returned. It should only
+            // (ever) be two bytes that is ever sent from the panel
+            return this->internal_vector_.data(); // number of bytes read
+        }
+
     private:
         int fd_ = -1;
+        std::vector<uint8_t> internal_vector_;
     };
 
 
