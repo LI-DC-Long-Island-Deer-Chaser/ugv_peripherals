@@ -5,6 +5,14 @@
 #include <string>
 #include <sstream>
 
+#include <filesystem>
+#include <random>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <signal.h>
+#include <mutex>  // for single-speaker lock
+
 // My custom defined actions
 #include "ugv_interfaces/action/play_speakers.hpp"
 
@@ -39,13 +47,35 @@ namespace ugv_peripherals
 				this,
 				"speaker",
 				std::bind(&SpeakerActionServer::handle_goal, this, _1, _2),
-																	std::bind(&SpeakerActionServer::handle_cancel, this, _1),
-																	std::bind(&SpeakerActionServer::handle_accepted, this, _1)
+				std::bind(&SpeakerActionServer::handle_cancel, this, _1),
+				std::bind(&SpeakerActionServer::handle_accepted, this, _1)
 			);
 		}
-	private:
-		rclcpp_action::Server<PlaySpeakers>::SharedPtr action_server_;
 
+	private:
+		// used for picking random noise files
+		std::string pick_random_wav(const std::string & dir)
+		{
+			std::vector<std::string> files;
+			for (const auto & entry : std::filesystem::directory_iterator(dir)) {
+				if (entry.path().extension() == ".wav") {
+					files.push_back(entry.path().string());
+				}
+			}
+
+			if (files.empty()) {
+				throw std::runtime_error("No wav files found");
+			}
+
+			static std::mt19937 rng{std::random_device{}()};
+			std::uniform_int_distribution<size_t> dist(0, files.size() - 1);
+			return files[dist(rng)];
+		}
+
+		rclcpp_action::Server<PlaySpeakers>::SharedPtr action_server_;
+		std::mutex speaker_mutex_; // ensures only one playback at a time
+
+		// called when a goal request comes in
 		rclcpp_action::GoalResponse handle_goal(
 			const rclcpp_action::GoalUUID & uuid,
 			std::shared_ptr<const PlaySpeakers::Goal> goal)
@@ -55,6 +85,7 @@ namespace ugv_peripherals
 			return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 		}
 
+		// called when a goal cancel request comes in
 		rclcpp_action::CancelResponse handle_cancel(
 			const std::shared_ptr<GoalHandlePlaySpeakers> goal_handle)
 		{
@@ -63,22 +94,114 @@ namespace ugv_peripherals
 			return rclcpp_action::CancelResponse::ACCEPT;
 		}
 
+		// main goal execution function
 		void execute(const std::shared_ptr<GoalHandlePlaySpeakers> goal_handle)
 		{
 			RCLCPP_INFO(this->get_logger(), "Executing goal");
-			rclcpp::Rate loop_rate(1);
-			const auto goal = goal_handle->get_goal();
-			auto feedback = std::make_shared<PlaySpeakers::Feedback>();
-			auto result = std::make_shared<PlaySpeakers::Result>();
 
-			// Check if goal is done
-			if (rclcpp::ok()) {
-				result->finished = true;
-				goal_handle->succeed(result);
-				RCLCPP_INFO(this->get_logger(), "Goal succeeded");
+			// result, feedback, goal
+			auto result = std::make_shared<PlaySpeakers::Result>();
+			auto feedback = std::make_shared<PlaySpeakers::Feedback>();
+			const auto goal = goal_handle->get_goal();
+
+			// ensure only one playback at a time
+			std::unique_lock<std::mutex> lock(speaker_mutex_, std::try_to_lock);
+			if (!lock.owns_lock()) {
+				result->finished = false;
+				result->debug_msg = "Speaker busy";
+				goal_handle->abort(result);
+				return;
 			}
+
+			// wave file path
+			std::string wav_file;
+
+			// select correct file based on type
+			try {
+				// this is to align with the PlaySpeakers.action
+				// 0 is for a random deterring roaring noise
+				if (goal->type == 0)
+				{
+					wav_file = pick_random_wav("resource");
+				}
+				// this is for the sos.wav file for if the battery is low
+				else if (goal->type == 1)
+				{
+					wav_file = "resource/sos.wav";
+				}
+				// Speaker type is not valid. 0, or 1 only (for now)
+				else
+				{
+					result->finished = false;
+					result->debug_msg = "Invalid speaker type";
+					goal_handle->abort(result);
+					return;
+				}
+			} catch (const std::exception & e) {
+				result->finished = false;
+				result->debug_msg = e.what();
+				goal_handle->abort(result);
+				return;
+			}
+
+			RCLCPP_INFO(this->get_logger(), "Playing %s", wav_file.c_str());
+
+			// record start time for feedback
+			auto start_time = this->now();
+
+			// fork/exec ffplay
+			pid_t pid = fork();
+			if (pid == 0) {
+				execlp("ffplay", "ffplay", "-nodisp", "-autoexit", wav_file.c_str(), nullptr);
+				_exit(1);
+			}
+
+			if (pid < 0) {
+				result->finished = false;
+				result->debug_msg = "Failed to start ffplay";
+				goal_handle->abort(result);
+				return;
+			}
+
+			// monitor playback
+			while (rclcpp::ok()) {
+				// check cancel request
+				if (goal_handle->is_canceling()) {
+					kill(pid, SIGTERM);
+					waitpid(pid, nullptr, 0);
+
+					result->finished = false;
+					result->debug_msg = "Playback canceled";
+					goal_handle->canceled(result);
+					RCLCPP_INFO(this->get_logger(), "Playback canceled");
+					return;
+				}
+
+				// non-blocking wait to see if playback finished
+				int status;
+				pid_t ret = waitpid(pid, &status, WNOHANG);
+				if (ret == pid) {
+					break;
+				}
+
+				// publish feedback with time elapsed
+				auto now = this->now();
+				feedback->time_remaining = (now - start_time).seconds();
+				goal_handle->publish_feedback(feedback);
+
+				rclcpp::sleep_for(std::chrono::milliseconds(100));
+			}
+
+			// final result
+			result->finished = true;
+			result->debug_msg = wav_file;
+			goal_handle->succeed(result);
+
+			RCLCPP_INFO(this->get_logger(), "Playback complete");
 		}
 
+		// called when a goal is accepted by the server
+		// spins off a thread so executor is not blocked
 		void handle_accepted(const std::shared_ptr<GoalHandlePlaySpeakers> goal_handle)
 		{
 			using namespace std::placeholders;
