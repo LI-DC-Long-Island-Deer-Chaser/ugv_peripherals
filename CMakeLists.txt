@@ -16,29 +16,50 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 
-add_library(action_server SHARED 
+add_library(lights_server SHARED 
     src/lights_controller.cpp)
 
-target_include_directories(action_server PRIVATE
+target_include_directories(lights_server PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 
-target_compile_definitions(action_server PRIVATE 
+target_compile_definitions(lights_server PRIVATE 
     "UGV_PERIPHERALS_BUILDING_DLL")
 
-ament_target_dependencies(action_server
+ament_target_dependencies(lights_server
     "ugv_interfaces"
     "rclcpp"
     "rclcpp_action"
     "rclcpp_components")
 
-rclcpp_components_register_node(action_server PLUGIN "ugv_peripherals::LightsController" EXECUTABLE lights_controller)
+rclcpp_components_register_node(lights_server PLUGIN "ugv_peripherals::LightsController" EXECUTABLE lights_controller)
+
+
+add_library(lights_test SHARED 
+    src/blink_test.cpp)
+
+target_include_directories(lights_test PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+
+target_compile_definitions(lights_test PRIVATE 
+    "UGV_PERIPHERALS_BUILDING_DLL")
+
+ament_target_dependencies(lights_test
+    "ugv_interfaces"
+    "rclcpp"
+    "rclcpp_action"
+    "rclcpp_components")
+
+rclcpp_components_register_node(lights_test PLUGIN "ugv_peripherals::LightsTestClient" EXECUTABLE lights_test_client)
 
 install(TARGETS
-    action_server
+    lights_server
+    lights_test
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin)
+
 
 if(BUILD_TESTING)
     find_package(ament_lint_auto REQUIRED)

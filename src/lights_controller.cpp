@@ -177,27 +177,23 @@ namespace ugv_peripherals
                 using namespace placeholders;
 
                 this->action_server_ = rclcpp_action::create_server<BlinkLights>(
-                        this,
-                        "ugv_peripherals/blink_lights",
-                        bind(&LightsController::action_handle_goal, this, _1, _2),
-                        bind(&LightsController::action_handle_cancel, this, _1),
-                        bind(&LightsController::action_handle_accepted, this, _1)
-                    );
+                    this,
+                    "ugv_peripherals/blink_lights",
+                    bind(&LightsController::action_handle_goal, this, _1, _2),
+                    bind(&LightsController::action_handle_cancel, this, _1),
+                    bind(&LightsController::action_handle_accepted, this, _1));
 
                 this->head_lights_service_ = this->create_service<HeadLights>(
-                        "ugv_peripherals/head_lights",
-                        bind(&LightsController::head_lights_callback, this, _1, _2)
-                    );
+                    "ugv_peripherals/head_lights",
+                    bind(&LightsController::head_lights_callback, this, _1, _2));
 
                 this->glow_lights_service_ = this->create_service<GlowLights>(
-                        "ugv_peripherals/glow_lights",
-                        bind(&LightsController::glow_lights_callback, this, _1, _2)
-                    );
+                    "ugv_peripherals/glow_lights",
+                    bind(&LightsController::glow_lights_callback, this, _1, _2));
 
                 this->strip_lights_service_ = this->create_service<StripLights>(
-                        "ugv_peripherals/strip_lights",
-                        bind(&LightsController::strip_lights_callback, this, _1, _2)
-                    );
+                    "ugv_peripherals/strip_lights",
+                    bind(&LightsController::strip_lights_callback, this, _1, _2));
 
                 this->s_ = SerialDevice();
 
@@ -213,7 +209,6 @@ namespace ugv_peripherals
             mutex strip_mutex_;
             mutex glow_mutex_;
 
-            mutex light_mutex_;
             rclcpp_action::Server<BlinkLights>::SharedPtr action_server_;
 
             SerialDevice s_;
