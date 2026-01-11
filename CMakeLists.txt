@@ -59,13 +59,18 @@ ament_target_dependencies(action_client
   "rclcpp_components"
   "sensor_msgs")
 
-rclcpp_components_register_node(action_client PLUGIN "ugv_peripherals::SpeakerActionClient" EXECUTABLE fibonacci_action_client)
+rclcpp_components_register_node(action_client PLUGIN "ugv_peripherals::SpeakerActionClient" EXECUTABLE speaker_action_client)
 install(TARGETS
   action_client
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 # END ACTION CLIENT
+
+# I forgot I needed the resource folder
+install(DIRECTORY resource/audio_lists_wav/
+  DESTINATION share/${PROJECT_NAME}/resource/audio_lists_wav
+  FILES_MATCHING PATTERN "*.wav")
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
