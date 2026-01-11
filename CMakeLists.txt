@@ -15,6 +15,7 @@ find_package(ugv_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 # BEGIN ACTION SERVER
 add_library(action_server SHARED
@@ -31,7 +32,9 @@ ament_target_dependencies(action_server
   "ugv_interfaces"
   "rclcpp"
   "rclcpp_action"
-  "rclcpp_components")
+  "rclcpp_components"
+  "sensor_msgs")
+
 rclcpp_components_register_node(action_server PLUGIN "ugv_peripherals::SpeakerActionServer" EXECUTABLE speaker_action_server)
 install(TARGETS
   action_server
@@ -39,6 +42,30 @@ install(TARGETS
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
 # END ACTION SERVER
+
+# BEGIN ACTION CLIENT
+add_library(action_client SHARED
+  src/speaker_action_client.cpp)
+target_include_directories(action_client PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+# Were not on windows
+#target_compile_definitions(action_client
+  #PRIVATE "ACTION_TUTORIALS_CPP_BUILDING_DLL")
+ament_target_dependencies(action_client
+  "ugv_interfaces"
+  "rclcpp"
+  "rclcpp_action"
+  "rclcpp_components"
+  "sensor_msgs")
+
+rclcpp_components_register_node(action_client PLUGIN "ugv_peripherals::SpeakerActionClient" EXECUTABLE fibonacci_action_client)
+install(TARGETS
+  action_client
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
+# END ACTION CLIENT
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
