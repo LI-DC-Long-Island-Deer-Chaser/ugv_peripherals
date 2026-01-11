@@ -71,6 +71,73 @@ if(BUILD_TESTING)
     # a copyright and license is added to all source files
     set(ament_cmake_cpplint_FOUND TRUE)
     ament_lint_auto_find_test_dependencies()
+find_package(sensor_msgs REQUIRED)
+
+# BEGIN ACTION SERVER
+add_library(action_server SHARED
+  src/speaker_action_server.cpp)
+target_include_directories(action_server PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+# FOR WINDOWS. NOT NECESSARY, CONSIDER REMOVING?
+target_compile_definitions(action_server
+  PRIVATE "ACTION_SPEAKERS_CPP_BUILDING_DLL")
+
+ament_target_dependencies(action_server
+  "ugv_interfaces"
+  "rclcpp"
+  "rclcpp_action"
+  "rclcpp_components"
+  "sensor_msgs")
+
+rclcpp_components_register_node(action_server PLUGIN "ugv_peripherals::SpeakerActionServer" EXECUTABLE speaker_action_server)
+install(TARGETS
+  action_server
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
+# END ACTION SERVER
+
+# BEGIN ACTION CLIENT
+add_library(action_client SHARED
+  src/speaker_action_client.cpp)
+target_include_directories(action_client PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+# Were not on windows
+#target_compile_definitions(action_client
+  #PRIVATE "ACTION_TUTORIALS_CPP_BUILDING_DLL")
+ament_target_dependencies(action_client
+  "ugv_interfaces"
+  "rclcpp"
+  "rclcpp_action"
+  "rclcpp_components"
+  "sensor_msgs")
+
+rclcpp_components_register_node(action_client PLUGIN "ugv_peripherals::SpeakerActionClient" EXECUTABLE speaker_action_client)
+install(TARGETS
+  action_client
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin)
+# END ACTION CLIENT
+
+# I forgot I needed the resource folder
+install(DIRECTORY resource/audio_lists_wav/
+  DESTINATION share/${PROJECT_NAME}/resource/audio_lists_wav
+  FILES_MATCHING PATTERN "*.wav")
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # comment the line when a copyright and license is added to all source files
+  set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # comment the line when this package is in a git repo and when
+  # a copyright and license is added to all source files
+  set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
 endif()
 
 ament_package()
