@@ -53,6 +53,37 @@ namespace ugv_peripherals
 		}
 
 	private:
+		// get audio duration
+		double get_audio_duration(const std::string & file)
+		{
+			// just a small buffer to hold
+			char buffer[128];
+			std::string cmd = "ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"" + file + "\"";
+			FILE* pipe = popen(cmd.c_str(), "r");
+
+			// looks like there is no open file capability
+			if (!pipe){
+				return 0.0;
+			}
+
+			// result gets taken from buffer to later return
+			std::string result;
+			while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+			{
+				result += buffer;
+			}
+			pclose(pipe);
+
+			try
+			{
+				return std::stod(result);
+			}
+			catch (...)
+			{
+				return 0.0;
+			}
+		}
+
 		// used for picking random noise files
 		std::string pick_random_wav(const std::string & dir)
 		{
@@ -186,9 +217,17 @@ namespace ugv_peripherals
 
 				// publish feedback with time elapsed
 				auto now = this->now();
-				feedback->time_remaining = (now - start_time).seconds();
+				// elapsed duration = deltaT
+				double elapsed = (now - start_time).seconds();
+
+				// duration extracted from ffprobe subtracted from elapsed
+				// this gives us time remaining = duration - deltaT
+				feedback->time_remaining = get_audio_duration(wav_file) - elapsed;
+
+				// feedback published
 				goal_handle->publish_feedback(feedback);
 
+				// sleep for 100ms wait.
 				rclcpp::sleep_for(std::chrono::milliseconds(100));
 			}
 
