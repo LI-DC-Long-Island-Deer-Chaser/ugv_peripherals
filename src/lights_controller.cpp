@@ -33,7 +33,7 @@ namespace ugv_peripherals
         {
             // code for the constructor function goes here
             // Hardcoded, known symlink path
-            const std::string device_path = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_58CD119813-if00";
+            const std::string device_path = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_58CD119667-if00";
 
             // Open the device
             this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
