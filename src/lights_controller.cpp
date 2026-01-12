@@ -135,7 +135,14 @@ namespace ugv_peripherals
             }
 
             // no errors:
-            cout << "Successfully sent payload [" << bytes_to_be_sent[1] << "] [" << bytes_to_be_sent[0] << "]" << endl;
+            cout << "Successfully sent payload [0x"
+                 << hex << setw(2) << setfill('0')
+                 << static_cast<int>(bytes_to_be_sent[0])
+                 << "] [0x"
+                 << setw(2)
+                 << static_cast<int>(bytes_to_be_sent[1])
+                 << "]" << dec << "\n";
+
             return 0;
         }
 
