@@ -44,8 +44,7 @@ namespace ugv_peripherals
 
 			using namespace std::placeholders;
 			// create the constructor for the subscriber thing for /mavros/battery
-			this->create_subscription<sensor_msgs::msg::BatteryState>(
-				"topic", 10, std::bind(&SpeakerActionClient::get_battery, this, _1));
+
 		}
 
 	private:
@@ -57,15 +56,6 @@ namespace ugv_peripherals
 		// timer for sending goal automatically
 		// this timer will get used in a callback for sending the goal.
 		rclcpp::TimerBase::SharedPtr timer_;
-
-		// battery stuff
-		bool battery_low_;
-		void get_battery(const sensor_msgs::msg::BatteryState::SharedPtr msg)
-		{
-			RCLCPP_INFO(this->get_logger(), "The battery is %f V", msg->voltage);
-			this->battery_low_ = msg->voltage <= 10.2;
-			return;
-		}
 
 		// send goal function
 		void send_goal()
@@ -86,15 +76,8 @@ namespace ugv_peripherals
 			auto goal_msg = PlaySpeakers::Goal();
 
 			// TODO: choose type here, 0=random wav, 1=sos.wav
+			// EDIT: NVM, we're always gonna have 0 here.
 			goal_msg.type = 0;
-
-			// define battery_low_ that's LITERALLY all I need
-			if (this->battery_low_)
-			{
-				// I hope this works
-				goal_msg.type = 1;
-			}
-
 			// we'll read /mavros/battery and play sos.wav if there's a certain battery voltage value we send 1 otherwise by default it is 1
 
 			RCLCPP_INFO(this->get_logger(), "Sending speaker goal (type=%d)", goal_msg.type);
