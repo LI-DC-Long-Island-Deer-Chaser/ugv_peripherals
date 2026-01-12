@@ -57,7 +57,7 @@ namespace ugv_peripherals
                 auto goal_msg = BlinkLights::Goal();
                 goal_msg.rate = 0.5;   // Hz
                 goal_msg.duration = 9; // Seconds
-                goal_msg.color = "Blue";
+                goal_msg.color = "white";
                 goal_msg.striplights = 1;
                 goal_msg.headlights = 1;
                 goal_msg.glowlights = 0;

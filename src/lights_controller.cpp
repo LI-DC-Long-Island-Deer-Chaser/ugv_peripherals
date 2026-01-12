@@ -33,11 +33,11 @@ namespace ugv_peripherals
         {
             // code for the constructor function goes here
             // Hardcoded, known symlink path
-            const std::string device_path = "/dev/serial/by-id/usb-QinHeng_Electronics_USB-Serial-if00";
+            const std::string device_path = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_58CD119813-if00";
 
             // Open the device
             this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
-            if (this->fd_ < 0) {
+            if (this->fd_ <= 0) {
                 cout << "OPENING THE QINHENG DEVICE FAILED. IT IS NOT PLUGGED IN!" << endl;
                 SerialDevice::~SerialDevice();
             }
@@ -53,8 +53,8 @@ namespace ugv_peripherals
             }
 
             // setting the baud rate to 115200
-            cfsetospeed(&tty, B115200);
-            cfsetispeed(&tty, B115200);
+            cfsetospeed(&tty, B9600);
+            cfsetispeed(&tty, B9600);
 
             // setting c flags
             tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
@@ -128,6 +128,7 @@ namespace ugv_peripherals
 
             if (n < 0) {
                 // errors:
+                cout << " n: " << n << " Failed."<< endl;
                 return 1;
             }
 
