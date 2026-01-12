@@ -39,7 +39,8 @@ namespace ugv_peripherals
             this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
             if (this->fd_ <= 0) {
                 cout << "OPENING THE QINHENG DEVICE FAILED. IT IS NOT PLUGGED IN!" << endl;
-                SerialDevice::~SerialDevice();
+                // The destructor should never be called
+                // SerialDevice::~SerialDevice();
             }
 
             // Configure serial port
@@ -70,7 +71,8 @@ namespace ugv_peripherals
 
             if (tcsetattr(this->fd_, TCSANOW, &tty) != 0) {
                 cout << "Could not configure the USB to UART adapter!" << endl;
-                close(this->fd_);
+                // temporarily removed the fd
+                // close(this->fd_);
             }
 
             // start it empty
@@ -173,7 +175,7 @@ namespace ugv_peripherals
             using GlowLights = ugv_interfaces::srv::GlowLights;
 
             explicit LightsController(const rclcpp::NodeOptions &option = rclcpp::NodeOptions())
-            : Node("lights_controller", option)
+            : Node("lights_controller", option), s_()
             {
                 using namespace placeholders;
 
@@ -195,8 +197,6 @@ namespace ugv_peripherals
                 this->strip_lights_service_ = this->create_service<StripLights>(
                     "ugv_peripherals/strip_lights",
                     bind(&LightsController::strip_lights_callback, this, _1, _2));
-
-                this->s_ = SerialDevice();
 
             }
 
@@ -402,10 +402,10 @@ namespace ugv_peripherals
                             return;
                         }
 
-                        this->s_.serial_write(1, 0, "white");
+                        s_.serial_write(1, 0, "white");
                         // wait(0.25)
                         usleep(250000);
-                        this->s_.serial_write(1, 1, "white");
+                        s_.serial_write(1, 1, "white");
 
                         // TODO because we have this manually added
                         // sleep so that the nuvoton can pick up both commands
@@ -420,10 +420,10 @@ namespace ugv_peripherals
                     }
 
 
-                    this->s_.serial_write(1, 0, "off");
+                    s_.serial_write(1, 0, "off");
                     // wait(0.25)
                     usleep(250000);
-                    this->s_.serial_write(1, 1, "off");
+                    s_.serial_write(1, 1, "off");
 
                     // wait(0.25)
                     usleep(250000);
