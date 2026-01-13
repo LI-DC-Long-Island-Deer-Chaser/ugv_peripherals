@@ -21,6 +21,9 @@
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
+// to get the list of files
+#include "ament_index_cpp/get_package_share_directory.hpp"
+
 // begin writing the server here.
 namespace ugv_peripherals
 {
@@ -87,15 +90,36 @@ namespace ugv_peripherals
 		// used for picking random noise files
 		std::string pick_random_wav(const std::string & dir)
 		{
+			RCLCPP_INFO(this->get_logger(), "Attempting to pick random wav.");
+
+			// Ensure directory exists
+			if (!std::filesystem::exists(dir)) {
+				RCLCPP_ERROR(this->get_logger(), "Why on Earth does the directory NOT exist?!");
+				throw std::runtime_error("Directory does not exist");
+			}
+
+			if (!std::filesystem::is_directory(dir)) {
+				RCLCPP_ERROR(this->get_logger(), "Audio path is not a directory: ");
+				throw std::runtime_error("Path is not a directory");
+			}
+
 			std::vector<std::string> files;
 			for (const auto & entry : std::filesystem::directory_iterator(dir)) {
 				if (entry.path().extension() == ".wav") {
 					files.push_back(entry.path().string());
+					RCLCPP_INFO(this->get_logger(), "Found entry path: %s", entry.path().c_str());
 				}
 			}
 
+			RCLCPP_INFO(this->get_logger(), "Finished loop.");
+
 			if (files.empty()) {
+				RCLCPP_ERROR(this->get_logger(), "No .wav files!");
 				throw std::runtime_error("No wav files found");
+			}
+
+			for (const auto & file : files) {
+				RCLCPP_INFO(this->get_logger(), "File: %s", file.c_str());
 			}
 
 			static std::mt19937 rng{std::random_device{}()};
@@ -136,7 +160,7 @@ namespace ugv_peripherals
 			const auto goal = goal_handle->get_goal();
 
 			// ensure only one playback at a time
-			std::unique_lock<std::mutex> lock(speaker_mutex_, std::try_to_lock);
+			std::unique_lock<std::mutex> lock(speaker_mutex_);
 			if (!lock.owns_lock()) {
 				result->finished = false;
 				result->debug_msg = "Speaker busy";
@@ -149,29 +173,14 @@ namespace ugv_peripherals
 
 			// select correct file based on type
 			try {
-				// this is to align with the PlaySpeakers.action
-				// 0 is for a random deterring roaring noise
-				if (goal->type == 0)
-				{
-					wav_file = pick_random_wav("resource");
-				}
-				// this is for the sos.wav file for if the battery is low
-				else if (goal->type == 1)
-				{
-					wav_file = "resource/sos.wav";
-				}
-				// Speaker type is not valid. 0, or 1 only (for now)
-				else
-				{
-					result->finished = false;
-					result->debug_msg = "Invalid speaker type";
-					goal_handle->abort(result);
-					return;
-				}
+				// there will always be a detterrence going on
+				// no SOS anymore
+				wav_file = pick_random_wav("resource/audio_lists_wav");
 			} catch (const std::exception & e) {
 				result->finished = false;
 				result->debug_msg = e.what();
 				goal_handle->abort(result);
+				RCLCPP_ERROR(this->get_logger(), "Exception called, there was an issue with the file. Filename: %s", wav_file.c_str());
 				return;
 			}
 
@@ -190,11 +199,14 @@ namespace ugv_peripherals
 			if (pid < 0) {
 				result->finished = false;
 				result->debug_msg = "Failed to start ffplay";
+				RCLCPP_ERROR(this->get_logger(), "ffplay failed for some reason");
+
 				goal_handle->abort(result);
 				return;
 			}
 
 			// monitor playback
+			double duration = get_audio_duration(wav_file);
 			while (rclcpp::ok()) {
 				// check cancel request
 				if (goal_handle->is_canceling()) {
@@ -222,7 +234,7 @@ namespace ugv_peripherals
 
 				// duration extracted from ffprobe subtracted from elapsed
 				// this gives us time remaining = duration - deltaT
-				feedback->time_remaining = get_audio_duration(wav_file) - elapsed;
+				feedback->time_remaining = duration - elapsed;
 
 				// feedback published
 				goal_handle->publish_feedback(feedback);
