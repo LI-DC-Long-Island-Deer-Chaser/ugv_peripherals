@@ -175,7 +175,9 @@ namespace ugv_peripherals
 			try {
 				// there will always be a detterrence going on
 				// no SOS anymore
-				wav_file = pick_random_wav("resource/audio_lists_wav");
+			// Get the installed package share directory path
+			std::string package_share_dir = ament_index_cpp::get_package_share_directory("ugv_peripherals");
+			std::string audio_dir = package_share_dir + "/resource/audio_lists_wav";			RCLCPP_INFO(this->get_logger(), "Looking for audio files in: %s", audio_dir.c_str());			wav_file = pick_random_wav(audio_dir);
 			} catch (const std::exception & e) {
 				result->finished = false;
 				result->debug_msg = e.what();
