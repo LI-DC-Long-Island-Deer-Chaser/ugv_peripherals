@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <mutex>  // for single-speaker lock
+#include <atomic>  // <-- ADDED
 
 // My custom defined actions
 #include "ugv_interfaces/action/play_speakers.hpp"
@@ -49,7 +50,7 @@ namespace ugv_peripherals
 			this->action_server_ = rclcpp_action::create_server<PlaySpeakers>(
 				this,
 				"speaker",
-				std::bind(&SpeakerActionServer::handle_goal, this, _1, _2),
+				std::bind(&SpeakerActionServer::handle_goal, this),
 				std::bind(&SpeakerActionServer::handle_cancel, this, _1),
 				std::bind(&SpeakerActionServer::handle_accepted, this, _1)
 			);
@@ -90,7 +91,7 @@ namespace ugv_peripherals
 		// used for picking random noise files
 		std::string pick_random_wav(const std::string & dir)
 		{
-			RCLCPP_INFO(this->get_logger(), "Attempting to pick random wav.");
+// 			RCLCPP_INFO(this->get_logger(), "Attempting to pick random wav.");
 
 			// Ensure directory exists
 			if (!std::filesystem::exists(dir)) {
@@ -99,7 +100,7 @@ namespace ugv_peripherals
 			}
 
 			if (!std::filesystem::is_directory(dir)) {
-				RCLCPP_ERROR(this->get_logger(), "Audio path is not a directory: ");
+// 				RCLCPP_ERROR(this->get_logger(), "Audio path is not a directory: ");
 				throw std::runtime_error("Path is not a directory");
 			}
 
@@ -107,19 +108,13 @@ namespace ugv_peripherals
 			for (const auto & entry : std::filesystem::directory_iterator(dir)) {
 				if (entry.path().extension() == ".wav") {
 					files.push_back(entry.path().string());
-					RCLCPP_INFO(this->get_logger(), "Found entry path: %s", entry.path().c_str());
+// 					RCLCPP_INFO(this->get_logger(), "Found entry path: %s", entry.path().c_str());
 				}
 			}
-
-			RCLCPP_INFO(this->get_logger(), "Finished loop.");
 
 			if (files.empty()) {
 				RCLCPP_ERROR(this->get_logger(), "No .wav files!");
 				throw std::runtime_error("No wav files found");
-			}
-
-			for (const auto & file : files) {
-				RCLCPP_INFO(this->get_logger(), "File: %s", file.c_str());
 			}
 
 			static std::mt19937 rng{std::random_device{}()};
@@ -128,15 +123,19 @@ namespace ugv_peripherals
 		}
 
 		rclcpp_action::Server<PlaySpeakers>::SharedPtr action_server_;
-		std::mutex speaker_mutex_; // ensures only one playback at a time
+
+		std::atomic_bool speaker_busy_{false};
 
 		// called when a goal request comes in
-		rclcpp_action::GoalResponse handle_goal(
-			const rclcpp_action::GoalUUID & uuid,
-			std::shared_ptr<const PlaySpeakers::Goal> goal)
+		rclcpp_action::GoalResponse handle_goal()
 		{
-			RCLCPP_INFO(this->get_logger(), "Test: I received type=%d", goal->type);
-			(void)uuid;
+			RCLCPP_INFO(this->get_logger(), "An action request came in.");
+
+			if (speaker_busy_.load()) {  // <-- ADDED
+				RCLCPP_WARN(this->get_logger(), "Speaker busy, rejecting goal");
+				return rclcpp_action::GoalResponse::REJECT;
+			}
+
 			return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 		}
 
@@ -159,14 +158,7 @@ namespace ugv_peripherals
 			auto feedback = std::make_shared<PlaySpeakers::Feedback>();
 			const auto goal = goal_handle->get_goal();
 
-			// ensure only one playback at a time
-			std::unique_lock<std::mutex> lock(speaker_mutex_);
-			if (!lock.owns_lock()) {
-				result->finished = false;
-				result->debug_msg = "Speaker busy";
-				goal_handle->abort(result);
-				return;
-			}
+			speaker_busy_.store(true);
 
 			// wave file path
 			std::string wav_file;
@@ -175,10 +167,13 @@ namespace ugv_peripherals
 			try {
 				// there will always be a detterrence going on
 				// no SOS anymore
-			// Get the installed package share directory path
-			std::string package_share_dir = ament_index_cpp::get_package_share_directory("ugv_peripherals");
-			std::string audio_dir = package_share_dir + "/resource/audio_lists_wav";			RCLCPP_INFO(this->get_logger(), "Looking for audio files in: %s", audio_dir.c_str());			wav_file = pick_random_wav(audio_dir);
+				// Get the installed package share directory path
+				std::string package_share_dir = ament_index_cpp::get_package_share_directory("ugv_peripherals");
+				std::string audio_dir = package_share_dir + "/resource/audio_lists_wav";
+//	 			RCLCPP_INFO(this->get_logger(), "Looking for audio files in: %s", audio_dir.c_str());
+				wav_file = pick_random_wav(audio_dir);
 			} catch (const std::exception & e) {
+				speaker_busy_.store(false);
 				result->finished = false;
 				result->debug_msg = e.what();
 				goal_handle->abort(result);
@@ -194,11 +189,12 @@ namespace ugv_peripherals
 			// fork/exec ffplay
 			pid_t pid = fork();
 			if (pid == 0) {
-				execlp("ffplay", "ffplay", "-nodisp", "-autoexit", wav_file.c_str(), nullptr);
+				execlp("ffplay", "ffplay", "-nodisp", "-autoexit", "-v", "0", wav_file.c_str(), nullptr);
 				_exit(1);
 			}
 
 			if (pid < 0) {
+				speaker_busy_.store(false);
 				result->finished = false;
 				result->debug_msg = "Failed to start ffplay";
 				RCLCPP_ERROR(this->get_logger(), "ffplay failed for some reason");
@@ -215,6 +211,7 @@ namespace ugv_peripherals
 					kill(pid, SIGTERM);
 					waitpid(pid, nullptr, 0);
 
+					speaker_busy_.store(false);
 					result->finished = false;
 					result->debug_msg = "Playback canceled";
 					goal_handle->canceled(result);
@@ -258,6 +255,7 @@ namespace ugv_peripherals
 		void handle_accepted(const std::shared_ptr<GoalHandlePlaySpeakers> goal_handle)
 		{
 			using namespace std::placeholders;
+
 			// this needs to return quickly to avoid blocking the executor, so spin up a new thread
 			std::thread(std::bind(&SpeakerActionServer::execute, this, _1), goal_handle).detach();
 		}
