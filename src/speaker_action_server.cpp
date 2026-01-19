@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <mutex>  // for single-speaker lock
-#include <atomic>  // <-- ADDED
+#include <atomic>
 
 // My custom defined actions
 #include "ugv_interfaces/action/play_speakers.hpp"

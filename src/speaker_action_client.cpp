@@ -102,6 +102,7 @@ namespace ugv_peripherals
 			// the goal was rejected from the server
 			if (!goal_handle) {
 				RCLCPP_ERROR(this->get_logger(), "Goal rejected");
+				rclcpp::shutdown();
 			}
 			// the goal was accepted from the server
 			else
