@@ -1,3 +1,4 @@
+// LIGHTS CLIENT
 #include <functional>
 #include <chrono>
 #include <memory>
@@ -77,9 +78,12 @@ namespace ugv_peripherals
             rclcpp_action::Client<BlinkLights>::SharedPtr client_ptr_;
             rclcpp::TimerBase::SharedPtr timer_;
 
+            /*
+            // why on Earth do we need these three clients?!
             rclcpp::Client<HeadLights>::SharedPtr head_lights_client_;
             rclcpp::Client<StripLights>::SharedPtr strip_lights_client_;
             rclcpp::Client<GlowLights>::SharedPtr glow_lights_client_;
+            */
 
             void goal_response_callback(const HandleBlinkLights::SharedPtr &goal_handle)
             {
@@ -98,7 +102,7 @@ namespace ugv_peripherals
             {
                 std::stringstream ss;
                 ss << "Time remaining until blinking will finish: " << feedback->time_remaining;
-                RCLCPP_INFO(this->get_logger(), ss.str().c_str());
+                RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
             }
 
             void result_callback(const HandleBlinkLights::WrappedResult &result)
@@ -123,7 +127,7 @@ namespace ugv_peripherals
                 std::stringstream ss;
                 ss << "Result received: finished: " << result.result->finished << "with debug message: " << result.result->debug_msg;
 
-                RCLCPP_INFO(this->get_logger(), ss.str().c_str());
+                RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
                 RCLCPP_INFO(this->get_logger(), "TEST PASSED");
                 rclcpp::shutdown();
             }
