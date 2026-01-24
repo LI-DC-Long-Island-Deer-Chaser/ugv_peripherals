@@ -1,3 +1,4 @@
+// LIGHTS SERVER
 #include <functional>
 #include <memory>
 #include <thread>
@@ -5,12 +6,15 @@
 #include <string>
 
 // needed to write to /dev/ttyACM2 (or whatever)
+// these includes are needed to discern /dev/serial/by-id/usb-1a86*
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
 #include <string>
 #include <iostream>
 
+// Search the filesystem for the USB Serial adapter
+#include <filesystem>
 
 #include "ugv_interfaces/action/blink_lights.hpp"
 #include "ugv_interfaces/srv/strip_lights.hpp"
@@ -23,149 +27,177 @@
 
 using namespace std;
 
-namespace ugv_peripherals
-{
-    class SerialDevice
-    {
-    public:
-        // SerialDevice constructor function
-        SerialDevice()
+namespace ugv_peripherals {
+using rcpputils::fs::exists;
+
+class SerialDevice {
+public:
+  // SerialDevice constructor function
+  SerialDevice() {
+    // code for the constructor function goes here
+
+    // NOTE: why doesn't C++ have .startswith???!!! WHYYYY
+    //       oh wait it's not Python. (Which is good I guess)
+
+    // BEGIN Janky Starstwith
+    std::string dir = "/dev/serial/by-id";
+
+    // Ensure directory exists
+    if (!exists(dir)) {
+        std::cout << "Directory doesn't exist" << std::endl;
+    }
+
+    // dang it this gets on my nerves.
+    // We should not be using a fixed serial number
+    // for the USB Device/Purple PCB
+    const std::string beginning = "usb-1a86_USB_Single_Serial";
+
+    // result of this janky startswith replacement goes here
+    std::string device_path;
+
+    for (const auto & entry : filesystem::directory_iterator(dir)){
+        std::string unix_dev_name = entry.path().filename();
+
+        if (unix_dev_name.substr(0,beginning.size()) == beginning)
         {
-            // code for the constructor function goes here
-            // Hardcoded, known symlink path
-            const std::string device_path = "/dev/serial/by-id/usb-1a86_USB_Single_Serial_58CD119667-if00";
+            // for debugging only
+            // std::cout << "Found: " << unix_dev_name << std::endl;
+            device_path = unix_dev_name;
 
-            // Open the device
-            this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
-            if (this->fd_ <= 0) {
-                cout << "OPENING THE QINHENG DEVICE FAILED. IT IS NOT PLUGGED IN!" << endl;
-                // The destructor should never be called
-                // SerialDevice::~SerialDevice();
-            }
-
-            // Configure serial port
-            // set tty so that later on we can use it
-            struct termios tty;
-            memset(&tty, 0, sizeof(tty));
-
-            if (tcgetattr(this->fd_, &tty) != 0) {
-                close(this->fd_);
-                cout << "Could not configure the USB to UART adapter!" << endl;
-            }
-
-            // setting the baud rate to 115200
-            cfsetospeed(&tty, B9600);
-            cfsetispeed(&tty, B9600);
-
-            // setting c flags
-            tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
-            tty.c_cflag &= ~PARENB;
-            tty.c_cflag &= ~CSTOPB;
-            tty.c_cflag &= ~CRTSCTS;
-            tty.c_cflag |= (CLOCAL | CREAD);
-            tty.c_lflag = 0;
-            tty.c_oflag = 0;
-            tty.c_iflag = 0;
-            tty.c_cc[VMIN]  = 1;
-            tty.c_cc[VTIME] = 5;
-
-            if (tcsetattr(this->fd_, TCSANOW, &tty) != 0) {
-                cout << "Could not configure the USB to UART adapter!" << endl;
-                // temporarily removed the fd
-                // close(this->fd_);
-            }
-
-            // start it empty
-            this->internal_vector_.clear();
+            // take first instance and break.
+            // Hopefully no lunatics plug in two USB Serial devices.
+            break;
         }
+    }
+    // END Janky Startswith
 
-        ~SerialDevice()
-        {
-            close(this->fd_);
-            cout << "Destructor called";
-        }
+    // Open the device
+    this->fd_ = open(device_path.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
+    if (this->fd_ <= 0) {
+      cout << "OPENING THE QINHENG DEVICE FAILED. IT IS NOT PLUGGED IN!"
+           << endl;
+      // The destructor should never be called
+      // SerialDevice::~SerialDevice();
+    }
 
-        int serial_write(uint8_t byte1, uint8_t byte2, std::string selected_color)
-        {
-            // Using a scoped lock for serial controller use.
-            // 0:  Bright green
-            // 1:  Dim green
-            // 2:  Very dark green
-            // 3:  Yellow
-            // 4:  Orange
-            // 5.  Bright red
-            // 6:  Dark blue
-            // 7:  Blue
-            // 8:  Cyan
-            // 9:  Magenta
-            // 10: Dark Red
-            // 11: Light Blue
-            // 12: Purple
-            // 13: Pink
-            // 14: White
-            // 15: Off
-            std::unordered_map<std::string, uint8_t> colors;
-            colors["green3"]  = 0;
-            colors["green2"]  = 1;
-            colors["green1"]  = 2;
-            colors["yellow"]  = 3;
-            colors["orange"]  = 4;
-            colors["red2"]    = 5;
-            colors["blue1"]   = 6;
-            colors["blue2"]   = 7;
-            colors["cyan"]    = 8;
-            colors["magenta"] = 9;
-            colors["red1"]    = 10;
-            colors["blue3"]   = 11;
-            colors["purple"]  = 12;
-            colors["pink"]    = 13;
-            colors["white"]   = 14;
-            colors["off"]     = 15;
+    // Configure serial port
+    // set tty so that later on we can use it
+    struct termios tty;
+    memset(&tty, 0, sizeof(tty));
 
-            // 010X to turn on all the headlights, where X is color
-            // 011X to turn on all the strip lights, where X is color
-            // 012X to turn on the glow lights, where X is brightness
-            uint8_t bytes_to_be_sent[2] = {byte1, (uint8_t)((byte2 << 4) | colors[selected_color])};
-            ssize_t n = write(this->fd_, bytes_to_be_sent, 2);
+    if (tcgetattr(this->fd_, &tty) != 0) {
+      close(this->fd_);
+      cout << "Could not configure the USB to UART adapter!" << endl;
+    }
 
-            if (n < 0) {
-                // errors:
-                cout << " n: " << n << " Failed."<< endl;
-                return 1;
-            }
+    // setting the baud rate to 115200
+    cfsetospeed(&tty, B9600);
+    cfsetispeed(&tty, B9600);
 
-            // no errors:
-            cout << "Successfully sent payload [0x"
-                 << hex << setw(2) << setfill('0')
-                 << static_cast<int>(bytes_to_be_sent[0])
-                 << "] [0x"
-                 << setw(2)
-                 << static_cast<int>(bytes_to_be_sent[1])
-                 << "]" << dec << "\n";
+    // setting c flags
+    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+    tty.c_cflag &= ~PARENB;
+    tty.c_cflag &= ~CSTOPB;
+    tty.c_cflag &= ~CRTSCTS;
+    tty.c_cflag |= (CLOCAL | CREAD);
+    tty.c_lflag = 0;
+    tty.c_oflag = 0;
+    tty.c_iflag = 0;
+    tty.c_cc[VMIN] = 1;
+    tty.c_cc[VTIME] = 5;
 
-            return 0;
-        }
+    if (tcsetattr(this->fd_, TCSANOW, &tty) != 0) {
+      cout << "Could not configure the USB to UART adapter!" << endl;
+      // temporarily removed the fd
+      // close(this->fd_);
+    }
 
-        uint8_t* serial_read()
-        {
-            ssize_t n = read(this->fd_, this->internal_vector_.data(), this->internal_vector_.size());
+    // start it empty
+    this->internal_vector_.clear();
+  }
 
-            if (n < 0) {
-                perror("serial read failed");
+  ~SerialDevice() {
+    close(this->fd_);
+    cout << "Destructor called";
+  }
 
-                // returns NULL address if there is no read
-                return NULL;
-            }
+  int serial_write(uint8_t byte1, uint8_t byte2, std::string selected_color) {
+    // Using a scoped lock for serial controller use.
+    // 0:  Bright green
+    // 1:  Dim green
+    // 2:  Very dark green
+    // 3:  Yellow
+    // 4:  Orange
+    // 5.  Bright red
+    // 6:  Dark blue
+    // 7:  Blue
+    // 8:  Cyan
+    // 9:  Magenta
+    // 10: Dark Red
+    // 11: Light Blue
+    // 12: Purple
+    // 13: Pink
+    // 14: White
+    // 15: Off
+    std::unordered_map<std::string, uint8_t> colors;
+    colors["green3"] = 0;
+    colors["green2"] = 1;
+    colors["green1"] = 2;
+    colors["yellow"] = 3;
+    colors["orange"] = 4;
+    colors["red2"] = 5;
+    colors["blue1"] = 6;
+    colors["blue2"] = 7;
+    colors["cyan"] = 8;
+    colors["magenta"] = 9;
+    colors["red1"] = 10;
+    colors["blue3"] = 11;
+    colors["purple"] = 12;
+    colors["pink"] = 13;
+    colors["white"] = 14;
+    colors["off"] = 15;
 
-            // returns the pure data of the internal vector
-            // if there even is data to be returned. It should only
-            // (ever) be two bytes that is ever sent from the panel
-            return this->internal_vector_.data(); // number of bytes read
-        }
+    // 010X to turn on all the headlights, where X is color
+    // 011X to turn on all the strip lights, where X is color
+    // 012X to turn on the glow lights, where X is brightness
+    uint8_t bytes_to_be_sent[2] = {
+        byte1, (uint8_t)((byte2 << 4) | colors[selected_color])};
+    ssize_t n = write(this->fd_, bytes_to_be_sent, 2);
 
-    private:
-        int fd_ = -1;
-        std::vector<uint8_t> internal_vector_;
+    if (n < 0) {
+      // errors:
+      cout << " n: " << n << " Failed." << endl;
+      return 1;
+    }
+
+    // no errors:
+    cout << "Successfully sent payload [0x" << hex << setw(2) << setfill('0')
+         << static_cast<int>(bytes_to_be_sent[0]) << "] [0x" << setw(2)
+         << static_cast<int>(bytes_to_be_sent[1]) << "]" << dec << "\n";
+
+    return 0;
+  }
+
+  uint8_t *serial_read() {
+    ssize_t n = read(this->fd_, this->internal_vector_.data(),
+                     this->internal_vector_.size());
+
+    if (n < 0) {
+      perror("serial read failed");
+
+      // returns NULL address if there is no read
+      return NULL;
+    }
+
+    // returns the pure data of the internal vector
+    // if there even is data to be returned. It should only
+    // (ever) be two bytes that is ever sent from the panel
+    return this->internal_vector_.data(); // number of bytes read
+  }
+
+private:
+  int fd_ = -1;
+  std::vector<uint8_t> internal_vector_;
     };
 
 
@@ -449,6 +481,6 @@ namespace ugv_peripherals
                 }
             }
     }; // Class: Lights Controller.
-} // Namespace: UGV Peripherals.
+    }  // namespace ugv_peripherals
 
 RCLCPP_COMPONENTS_REGISTER_NODE(ugv_peripherals::LightsController)
