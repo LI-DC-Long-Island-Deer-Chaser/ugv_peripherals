@@ -15,6 +15,7 @@ find_package(ugv_interfaces REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(ALSA REQUIRED)
 
 add_library(lights_server SHARED 
     src/lights_controller.cpp)
@@ -79,6 +80,10 @@ ament_target_dependencies(action_server
   "rclcpp_action"
   "rclcpp_components"
   "sensor_msgs")
+
+target_link_libraries(action_server
+  asound
+)
 
 rclcpp_components_register_node(action_server PLUGIN "ugv_peripherals::SpeakerActionServer" EXECUTABLE speaker_action_server)
 install(TARGETS
