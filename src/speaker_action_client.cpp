@@ -14,6 +14,9 @@
 #include "rclcpp_components/register_node_macro.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
 
+// trying to merge lights and speaker action client into one
+#include "ugv_interfaces/action/blink_lights.hpp"
+
 // begin writing the client here
 namespace ugv_peripherals
 {
@@ -25,15 +28,20 @@ namespace ugv_peripherals
 		// is going to be the name of the action file
 		using PlaySpeakers = ugv_interfaces::action::PlaySpeakers;
 		using GoalHandlePlaySpeakers = rclcpp_action::ClientGoalHandle<PlaySpeakers>;
+		using BlinkLights = ugv_interfaces::action::BlinkLights;
 
 		// constructor function
-		explicit SpeakerActionClient(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-		: Node("speaker_action_client", options)
+		explicit SpeakerActionClient(const rclcpp::NodeOptions & speaker_options = rclcpp::NodeOptions())
+		: Node("speaker_action_client", speaker_options)
 		{
 			// creating the action client pointer
-			this->client_ptr_ = rclcpp_action::create_client<PlaySpeakers>(
+			this->speakers_client_ptr_ = rclcpp_action::create_client<PlaySpeakers>(
 				this,
 				"speaker");
+
+			this->lights_client_ptr_ = rclcpp_action::create_client<BlinkLights>(
+				this,
+				"lights");
 
 			// optional timer to send the goal after startup
 			// wait like 500 ms or so
@@ -42,20 +50,23 @@ namespace ugv_peripherals
 				std::bind(&SpeakerActionClient::send_goal, this)
 			);
 
-			using namespace std::placeholders;
-			// create the constructor for the subscriber thing for /mavros/battery
-
+			feedback_forwarding = false;
 		}
 
 	private:
 		rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr subscription_;
 
-		// pointer to action client
-		rclcpp_action::Client<PlaySpeakers>::SharedPtr client_ptr_;
+		// pointer to speakers' action client
+		rclcpp_action::Client<PlaySpeakers>::SharedPtr speakers_client_ptr_;
+
+		// pointer to lights' action client
+		rclcpp_action::Client<BlinkLights>::SharedPtr lights_client_ptr_;
 
 		// timer for sending goal automatically
 		// this timer will get used in a callback for sending the goal.
 		rclcpp::TimerBase::SharedPtr timer_;
+
+		bool feedback_forwarding;
 
 		// send goal function
 		void send_goal()
@@ -66,32 +77,26 @@ namespace ugv_peripherals
 			this->timer_->cancel();
 
 			// wait for server to appear
-			if (!this->client_ptr_->wait_for_action_server()) {
+			if (!this->speakers_client_ptr_->wait_for_action_server()) {
 				RCLCPP_ERROR(this->get_logger(), "Action server not available after waiting");
 				rclcpp::shutdown();
 				return;
 			}
 
 			// build goal message
-			auto goal_msg = PlaySpeakers::Goal();
-
-			// TODO: choose type here, 0=random wav, 1=sos.wav
-			// EDIT: NVM, we're always gonna have 0 here.
-			goal_msg.type = 0;
-			// we'll read /mavros/battery and play sos.wav if there's a certain battery voltage value we send 1 otherwise by default it is 1
-
-			RCLCPP_INFO(this->get_logger(), "Sending speaker goal (type=%d)", goal_msg.type);
+			auto speakers_goal = PlaySpeakers::Goal();
+			auto lights_goal = BlinkLights::Goal();
 
 			// prepare send goal options
-			auto send_goal_options = rclcpp_action::Client<PlaySpeakers>::SendGoalOptions();
+			auto send_speakers_goal = rclcpp_action::Client<PlaySpeakers>::SendGoalOptions();
 
 			// function and method stuff for the response, feedback and result
-			send_goal_options.goal_response_callback = std::bind(&SpeakerActionClient::goal_response_callback, this, _1);
-			send_goal_options.feedback_callback = std::bind(&SpeakerActionClient::feedback_callback, this, _1, _2);
-			send_goal_options.result_callback = std::bind(&SpeakerActionClient::result_callback, this, _1);
+			send_speakers_goal.goal_response_callback = std::bind(&SpeakerActionClient::goal_response_callback, this, _1);
+			send_speakers_goal.feedback_callback = std::bind(&SpeakerActionClient::feedback_callback, this, _1, _2);
+			send_speakers_goal.result_callback = std::bind(&SpeakerActionClient::result_callback, this, _1);
 
 			// async send goal
-			this->client_ptr_->async_send_goal(goal_msg, send_goal_options);
+			this->speakers_client_ptr_->async_send_goal(speakers_goal, send_speakers_goal);
 		}
 
 		// goal response callback
@@ -116,7 +121,14 @@ namespace ugv_peripherals
 			GoalHandlePlaySpeakers::SharedPtr,
 			 const std::shared_ptr<const PlaySpeakers::Feedback> feedback)
 		{
-			// display ffplay time remaining (get it from the action server)
+			if (!feedback_forwarding)
+			{
+				// set it to true
+				feedback_forwarding = true;
+				// read the feedback, and send it to action server: Lights
+
+			}
+			// display time remaining (get it from the action server)
 			RCLCPP_INFO(this->get_logger(), "Time remaining: %.2f seconds", feedback->time_remaining);
 		}
 
@@ -129,6 +141,7 @@ namespace ugv_peripherals
 				case rclcpp_action::ResultCode::SUCCEEDED:
 					RCLCPP_INFO(this->get_logger(), "Playback finished successfully: %s",
 						    result.result->debug_msg.c_str());
+					feedback_forwarding = false;
 					break;
 
 				case rclcpp_action::ResultCode::CANCELED:
@@ -145,7 +158,8 @@ namespace ugv_peripherals
 			}
 
 			// shutdown node after receiving result (we're done here)
-			rclcpp::shutdown();
+			//
+			// rclcpp::shutdown();
 		}
 	};
 }

@@ -318,10 +318,14 @@ namespace ugv_peripherals
 				{
 					feedback->time_remaining = remaining_time;
 					old_value = remaining_time;
-				}
 
-				// feedback published
-				goal_handle->publish_feedback(feedback);
+					// feedback published
+					goal_handle->publish_feedback(feedback);
+
+					// For debugging, because for some reason
+					// it originally published 0 as the first remaining time feedback.
+					RCLCPP_INFO(this->get_logger(), "Remaining time %f", remaining_time);
+				}
 
 				// sleep for 30ms wait.
 				rclcpp::sleep_for(std::chrono::milliseconds(30));
