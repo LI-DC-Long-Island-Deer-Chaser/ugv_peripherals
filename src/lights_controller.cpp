@@ -481,13 +481,13 @@ private:
 
 		feedback->time_remaining = goal->duration;
 
-		rclcpp::Rate loop_rate(goal->rate);
+		// rclcpp::Rate loop_rate(goal->rate);
 
 		RCLCPP_INFO(this->get_logger(),
 			"And so it begins. Information about the requested "
 			"action listed below:");
-		RCLCPP_INFO(this->get_logger(), "Flashing rate: %f [Hz]",
-			goal->rate);
+		// RCLCPP_INFO(this->get_logger(), "Flashing rate: %f [Hz]",
+		//	goal->rate);
 		RCLCPP_INFO(this->get_logger(), "Duration: %f [s]",
 			goal->duration);
 		RCLCPP_INFO(this->get_logger(), "color: %s [RGB]",
@@ -499,6 +499,11 @@ private:
 		RCLCPP_INFO(
 		this->get_logger(),
 		"Ready to start, waiting for lights to become available");
+
+		rclcpp::Time start = this->get_clock()->now();
+
+		// get the total duration when it just started
+		float total_seconds = feedback->time_remaining;
 
 		// using a scoped lock to use the lights on the rover making
 		// sure they are not taken.
@@ -512,23 +517,23 @@ private:
 					result->finished = false;
 					result->debug_msg = "canceled";
 					goal_handle->canceled(result);
-					RCLCPP_INFO(this->get_logger(),
-						"Goal Canceled");
+					RCLCPP_INFO(this->get_logger(), "Goal Canceled");
 					return;
 				}
 
 				goal_handle->publish_feedback(feedback);
-				RCLCPP_INFO(this->get_logger(),
-					"Published Feedback. RATE: %f",
-					goal->rate);
+				// RCLCPP_INFO(this->get_logger(),
+				// 	"Published Feedback. RATE: %f",
+				// 	goal->rate);
 
-				// we should have a check here that says that
-				// if we sleep longer than time remaining,
-				// don't.
-				loop_rate.sleep();
+				rclcpp::Time now = this->get_clock()->now();
 
-				feedback->time_remaining =
-				feedback->time_remaining - (1 / goal->rate);
+				// update the feedback to be total duration - elapsed
+				// where elapsed = now-start (time delta)
+				feedback->time_remaining = total_seconds - (now - start).seconds();
+
+				// this sleep is here just to prevent 100% CPU usage
+				rclcpp::sleep_for(std::chrono::milliseconds(100));
 			}
 			s_.serial_write(1, 0, "off");
 
