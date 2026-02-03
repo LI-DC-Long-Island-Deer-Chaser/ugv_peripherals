@@ -64,12 +64,17 @@ namespace ugv_peripherals
 		// pointer to lights' action client
 		rclcpp_action::Client<BlinkLights>::SharedPtr lights_client_ptr_;
 
-		// timer for sending goal automatically
-		// this timer will get used in a callback for sending the goal.
-		rclcpp::TimerBase::SharedPtr timer_;
+		// BEGIN Timer variables
+		// retry timer the server is too busy right now
+		rclcpp::TimerBase::SharedPtr retry_timer_;
 
 		// new timer for the 5-second wait
 		rclcpp::TimerBase::SharedPtr wait_timer_;
+
+		// timer for sending goal automatically
+		// this timer will get used in a callback for sending the goal.
+		rclcpp::TimerBase::SharedPtr timer_;
+		// END Timer variables
 
 		bool feedback_forwarding;
 		bool waiting_for_next_speaker_goal_;
@@ -111,9 +116,14 @@ namespace ugv_peripherals
 
 			// the goal was rejected from the server
 			if (!goal_handle) {
-				RCLCPP_ERROR(this->get_logger(), "Goal rejected");
-				rclcpp::shutdown();
+				RCLCPP_WARN(this->get_logger(), "Goal rejected, retrying in 250 ms");
+
+				this->retry_timer_ = this->create_wall_timer(
+					std::chrono::milliseconds(250),
+									     std::bind(&SpeakerActionClient::send_goal, this)
+				);
 			}
+
 			// the goal was accepted from the server
 			else
 			{
