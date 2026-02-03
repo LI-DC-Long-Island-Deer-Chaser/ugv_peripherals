@@ -52,6 +52,7 @@ namespace ugv_peripherals
 			);
 
 			feedback_forwarding = false;
+			waiting_for_next_speaker_goal_ = false;
 		}
 
 	private:
@@ -67,7 +68,11 @@ namespace ugv_peripherals
 		// this timer will get used in a callback for sending the goal.
 		rclcpp::TimerBase::SharedPtr timer_;
 
+		// new timer for the 5-second wait
+		rclcpp::TimerBase::SharedPtr wait_timer_;
+
 		bool feedback_forwarding;
+		bool waiting_for_next_speaker_goal_;
 
 		// send goal function
 		void send_goal()
@@ -154,6 +159,15 @@ namespace ugv_peripherals
 					RCLCPP_INFO(this->get_logger(), "Playback finished successfully: %s",
 						    result.result->debug_msg.c_str());
 					feedback_forwarding = false;
+
+					// Acknowledge completion, and wait for 5 seconds
+					waiting_for_next_speaker_goal_ = true;
+
+					// Set a timer to send the next goal after 5 seconds
+					wait_timer_ = this->create_wall_timer(
+						std::chrono::seconds(5),
+						std::bind(&SpeakerActionClient::send_goal, this)
+					);
 					break;
 
 				case rclcpp_action::ResultCode::CANCELED:
