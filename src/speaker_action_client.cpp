@@ -29,6 +29,7 @@ namespace ugv_peripherals
 		using PlaySpeakers = ugv_interfaces::action::PlaySpeakers;
 		using GoalHandlePlaySpeakers = rclcpp_action::ClientGoalHandle<PlaySpeakers>;
 		using BlinkLights = ugv_interfaces::action::BlinkLights;
+		using GoalHandleBlinkLights = rclcpp_action::ClientGoalHandle<BlinkLights>;
 
 		// constructor function
 		explicit SpeakerActionClient(const rclcpp::NodeOptions & speaker_options = rclcpp::NodeOptions())
@@ -41,13 +42,13 @@ namespace ugv_peripherals
 
 			this->lights_client_ptr_ = rclcpp_action::create_client<BlinkLights>(
 				this,
-				"lights");
+				"ugv_peripherals/blink_lights");
 
 			// optional timer to send the goal after startup
 			// wait like 500 ms or so
 			this->timer_ = this->create_wall_timer(
 				std::chrono::milliseconds(500),
-				std::bind(&SpeakerActionClient::send_goal, this)
+							       std::bind(&SpeakerActionClient::send_goal, this)
 			);
 
 			feedback_forwarding = false;
@@ -85,7 +86,6 @@ namespace ugv_peripherals
 
 			// build goal message
 			auto speakers_goal = PlaySpeakers::Goal();
-			auto lights_goal = BlinkLights::Goal();
 
 			// prepare send goal options
 			auto send_speakers_goal = rclcpp_action::Client<PlaySpeakers>::SendGoalOptions();
@@ -127,6 +127,18 @@ namespace ugv_peripherals
 				feedback_forwarding = true;
 				// read the feedback, and send it to action server: Lights
 
+				if (!this->lights_client_ptr_->wait_for_action_server()) {
+					RCLCPP_ERROR(this->get_logger(), "Lights action server not available");
+					return;
+				}
+
+				auto lights_goal = BlinkLights::Goal();
+				lights_goal.duration = feedback->time_remaining;
+				lights_goal.color = "white";
+
+				auto send_lights_goal = rclcpp_action::Client<BlinkLights>::SendGoalOptions();
+
+				this->lights_client_ptr_->async_send_goal(lights_goal, send_lights_goal);
 			}
 			// display time remaining (get it from the action server)
 			RCLCPP_INFO(this->get_logger(), "Time remaining: %.2f seconds", feedback->time_remaining);
@@ -146,14 +158,17 @@ namespace ugv_peripherals
 
 				case rclcpp_action::ResultCode::CANCELED:
 					RCLCPP_ERROR(this->get_logger(), "Playback canceled");
+					feedback_forwarding = false;
 					break;
 
 				case rclcpp_action::ResultCode::ABORTED:
 					RCLCPP_ERROR(this->get_logger(), "Playback aborted");
+					feedback_forwarding = false;
 					break;
 
 				default:
 					RCLCPP_ERROR(this->get_logger(), "Unknown result code");
+					feedback_forwarding = false;
 					break;
 			}
 
