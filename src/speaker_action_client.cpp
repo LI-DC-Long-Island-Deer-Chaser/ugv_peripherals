@@ -48,11 +48,10 @@ namespace ugv_peripherals
 			// wait like 500 ms or so
 			this->timer_ = this->create_wall_timer(
 				std::chrono::milliseconds(500),
-							       std::bind(&SpeakerActionClient::send_goal, this)
+				std::bind(&SpeakerActionClient::send_goal, this)
 			);
 
 			feedback_forwarding = false;
-			waiting_for_next_speaker_goal_ = false;
 		}
 
 	private:
@@ -64,20 +63,11 @@ namespace ugv_peripherals
 		// pointer to lights' action client
 		rclcpp_action::Client<BlinkLights>::SharedPtr lights_client_ptr_;
 
-		// BEGIN Timer variables
-		// retry timer the server is too busy right now
-		rclcpp::TimerBase::SharedPtr retry_timer_;
-
-		// new timer for the 5-second wait
-		rclcpp::TimerBase::SharedPtr wait_timer_;
-
 		// timer for sending goal automatically
 		// this timer will get used in a callback for sending the goal.
 		rclcpp::TimerBase::SharedPtr timer_;
-		// END Timer variables
 
 		bool feedback_forwarding;
-		bool waiting_for_next_speaker_goal_;
 
 		// send goal function
 		void send_goal()
@@ -116,14 +106,9 @@ namespace ugv_peripherals
 
 			// the goal was rejected from the server
 			if (!goal_handle) {
-				RCLCPP_WARN(this->get_logger(), "Goal rejected, retrying in 250 ms");
-
-				this->retry_timer_ = this->create_wall_timer(
-					std::chrono::milliseconds(250),
-									     std::bind(&SpeakerActionClient::send_goal, this)
-				);
+				RCLCPP_ERROR(this->get_logger(), "Goal rejected");
+				return;
 			}
-
 			// the goal was accepted from the server
 			else
 			{
@@ -170,14 +155,11 @@ namespace ugv_peripherals
 						    result.result->debug_msg.c_str());
 					feedback_forwarding = false;
 
-					// Acknowledge completion, and wait for 5 seconds
-					waiting_for_next_speaker_goal_ = true;
+					// Delay for 5 seconds after both goals have completed
+					std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
-					// Set a timer to send the next goal after 5 seconds
-					wait_timer_ = this->create_wall_timer(
-						std::chrono::seconds(5),
-						std::bind(&SpeakerActionClient::send_goal, this)
-					);
+					// Send goal to speaker again after 5 seconds
+					send_goal();
 					break;
 
 				case rclcpp_action::ResultCode::CANCELED:
