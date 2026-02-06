@@ -114,7 +114,7 @@ namespace ugv_peripherals
 
 
 				// [11.1,11.1-((11.1-10.5)/(7))...10.5]
-				if (b->voltage < 10.5857142857)
+				if (b->voltage < 10.5857142857 )
 				{
 					request->color = "red2";
 				}
