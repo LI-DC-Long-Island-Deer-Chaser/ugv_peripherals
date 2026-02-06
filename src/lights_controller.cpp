@@ -397,7 +397,7 @@ private:
 			response->debug_msg = "In Use";
 			RCLCPP_INFO(
 			this->get_logger(),
-			"Strip lights are in use. responding with flase.");
+			"Strip lights are in use. responding with false.");
 		}
 	}
 
