@@ -4,9 +4,13 @@
 #include <memory>
 #include <string>
 #include <sstream>
+#include <thread>
 
 // My custom defined actions
 #include "ugv_interfaces/action/play_speakers.hpp"
+
+// ROS2 make a service request
+#include "ugv_interfaces/srv/strip_lights.hpp"
 
 // ROS2 standard interfaces, and other ros2-related includes
 #include "rclcpp/rclcpp.hpp"
@@ -44,6 +48,17 @@ namespace ugv_peripherals
 				this,
 				"ugv_peripherals/blink_lights");
 
+			// service client created once and reused
+			this->strip_lights_client_ =
+			this->create_client<ugv_interfaces::srv::StripLights>(
+				"/ugv_peripherals/strip_lights");
+
+			this->subscription_ = this->create_subscription<sensor_msgs::msg::BatteryState>(
+				"/ap/battery",
+				rclcpp::QoS(10).best_effort(),
+				std::bind(&SpeakerActionClient::battery_callback, this, std::placeholders::_1)
+			);
+
 			// optional timer to send the goal after startup
 			// wait like 500 ms or so
 			this->timer_ = this->create_wall_timer(
@@ -52,9 +67,12 @@ namespace ugv_peripherals
 			);
 
 			feedback_forwarding = false;
+			speaker_done = false;
+			lights_done = false;
 		}
 
 	private:
+		// subscription for battery state (voltage)
 		rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr subscription_;
 
 		// pointer to speakers' action client
@@ -63,16 +81,93 @@ namespace ugv_peripherals
 		// pointer to lights' action client
 		rclcpp_action::Client<BlinkLights>::SharedPtr lights_client_ptr_;
 
+		// service client
+		rclcpp::Client<ugv_interfaces::srv::StripLights>::SharedPtr strip_lights_client_;
+
 		// timer for sending goal automatically
 		// this timer will get used in a callback for sending the goal.
 		rclcpp::TimerBase::SharedPtr timer_;
 
+		rclcpp::TimerBase::SharedPtr restart_timer_;
+
 		bool feedback_forwarding;
+		bool speaker_done;
+		bool lights_done;
+
+		void battery_callback(const sensor_msgs::msg::BatteryState::SharedPtr b)
+		{
+			// if they are both done that is when we'll start doing some stuff
+			if (speaker_done && lights_done)
+			{
+				// log voltage for now
+				RCLCPP_INFO(this->get_logger(), "Voltage: %f", b->voltage);
+				// TODO: MAKE IT SEND A SERVICE CALL to the service server
+
+				// BEGIN FIX
+				if (!strip_lights_client_->service_is_ready()) {
+					RCLCPP_ERROR(this->get_logger(), "Service not available, unable to call strip_lights.");
+					return;
+				}
+
+				auto request = std::make_shared<ugv_interfaces::srv::StripLights::Request>();
+				request->all_off = false;
+
+
+				// [11.1,11.1-((11.1-10.5)/(7))...10.5]
+				if (b->voltage < 10.5857142857)
+				{
+					request->color = "red2";
+				}
+				else if (b->voltage < 10.6714285714)
+				{
+					request->color = "red1";
+				}
+				else if (b->voltage < 10.7571428571)
+				{
+					request->color = "orange";
+				}
+				else if (b->voltage < 10.8428571429)
+				{
+					request->color = "yellow";
+				}
+				else if (b->voltage < 10.9285714286)
+				{
+					request->color = "green1";
+				}
+				else if (b->voltage < 11.0142857143)
+				{
+					request->color = "green2";
+				}
+				else
+				{
+					request->color = "green3";
+				}
+
+				request->led_num = 1;
+
+				// Send the request asynchronously
+				strip_lights_client_->async_send_request(request);
+
+				// Spin until the future is completed using shared_from_this to get the shared pointer to the node
+				// rclcpp::spin_until_future_complete(this->shared_from_this(), result_future);
+
+				// Check if the future completed successfully
+				// if (result_future.get()) {
+				//	RCLCPP_INFO(this->get_logger(), "Service call succeeded. Response: %s", result_future.get()->debug_msg.c_str());
+				// } else {
+				//	RCLCPP_ERROR(this->get_logger(), "Failed to call the service");
+				// }
+				// END FIX
+			}
+		}
 
 		// send goal function
 		void send_goal()
 		{
 			using namespace std::placeholders;
+
+			speaker_done = false;
+			lights_done = false;
 
 			// cancel the timer so it only triggers once
 			this->timer_->cancel();
@@ -138,10 +233,19 @@ namespace ugv_peripherals
 
 				auto send_lights_goal = rclcpp_action::Client<BlinkLights>::SendGoalOptions();
 
+				send_lights_goal.result_callback =
+				std::bind(&SpeakerActionClient::lights_result_callback, this, std::placeholders::_1);
+
 				this->lights_client_ptr_->async_send_goal(lights_goal, send_lights_goal);
 			}
 			// display time remaining (get it from the action server)
 			RCLCPP_INFO(this->get_logger(), "Time remaining: %.2f seconds", feedback->time_remaining);
+		}
+
+		void lights_result_callback(const GoalHandleBlinkLights::WrappedResult &)
+		{
+			lights_done = true;
+			check_and_restart();
 		}
 
 		// result callback
@@ -153,37 +257,40 @@ namespace ugv_peripherals
 				case rclcpp_action::ResultCode::SUCCEEDED:
 					RCLCPP_INFO(this->get_logger(), "Playback finished successfully: %s",
 						    result.result->debug_msg.c_str());
-					feedback_forwarding = false;
-
-					// Delay for 5 seconds after both goals have completed
-					std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-
-					// Send goal to speaker again after 5 seconds
-					send_goal();
 					break;
 
 				case rclcpp_action::ResultCode::CANCELED:
 					RCLCPP_ERROR(this->get_logger(), "Playback canceled");
-					feedback_forwarding = false;
 					break;
 
 				case rclcpp_action::ResultCode::ABORTED:
 					RCLCPP_ERROR(this->get_logger(), "Playback aborted");
-					feedback_forwarding = false;
 					break;
 
 				default:
 					RCLCPP_ERROR(this->get_logger(), "Unknown result code");
-					feedback_forwarding = false;
 					break;
 			}
+			speaker_done = true;
+			feedback_forwarding = false;
+			check_and_restart();
 
 			// shutdown node after receiving result (we're done here)
 			//
 			// rclcpp::shutdown();
 		}
+
+		void check_and_restart()
+		{
+			if (speaker_done && lights_done)
+			{
+				this->restart_timer_ = this->create_wall_timer(
+					std::chrono::milliseconds(5000),
+					std::bind(&SpeakerActionClient::send_goal, this)
+				);
+			}
+		}
 	};
 }
-
 // register the node with ROS2 components
 RCLCPP_COMPONENTS_REGISTER_NODE(ugv_peripherals::SpeakerActionClient)
