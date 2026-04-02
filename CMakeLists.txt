@@ -37,7 +37,7 @@ rclcpp_components_register_node(lights_server PLUGIN "ugv_peripherals::LightsCon
 
 
 add_library(lights_test SHARED 
-    src/blink_test.cpp)
+    src/deterrence_event_trigger.cpp)
 
 target_include_directories(lights_test PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
