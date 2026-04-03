@@ -20,7 +20,7 @@
 
 /*
 *
-*       What: Deterrence system that sychronizes speakers and lights, triggering them on 
+*       What: Deterrence system that synchronizes speakers and lights, triggering them on 
 *                 detection of a deer.
 *
 *       How: Node subscribes to /yolo_anomaly_angle topic and sends a goal to start the process for deterring when a threshold is crossed.
@@ -87,17 +87,17 @@ namespace ugv_peripherals
                 rclcpp::Subscription<YoloStatus>::SharedPtr detection_subscription_;
 
                 float threshold;                                                                        // confidence level to exceed before deterrence system activates
-                bool feedback_forwarding;                                                       // synchronizes audio length and blinking duration
+                bool feedback_forwarding;                                                               // synchronizes audio length and blinking duration
                 bool speakers_done;
 
                 void anomaly_callback(const YoloStatus msg)
-        {
-                if(msg.confidence[0] > threshold && speakers_done)              // if confident that there is an anomaly and no deterrence system playing
+                {
+                if(msg.confidence[0] > threshold && speakers_done)                                      // if confident that there is an anomaly and no deterrence system playing
                         {
                                 send_goal();
                         }
                         return; 
-        }
+                }
 
                 void send_goal()
                 {

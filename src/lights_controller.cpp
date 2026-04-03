@@ -263,7 +263,7 @@ public:
 
 		this->action_server_ =
 		rclcpp_action::create_server<BlinkLights>(
-			this, "ugv_peripherals/blink_lights",
+			this, "blink_lights_action_server",
 			bind(&LightsController::action_handle_goal, this, _1,
 			_2),
 			bind(&LightsController::action_handle_cancel, this, _1),
