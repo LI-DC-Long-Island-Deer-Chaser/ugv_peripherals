@@ -93,7 +93,7 @@ target_include_directories(deterrence_event_trigger PRIVATE
   $<INSTALL_INTERFACE:include>)
 
 # note: the plugin is the C++ class name 
-rclcpp_components_register_nodes(deterrence_event_trigger PLUGIN "ugv_peripherals::DeterrenceActionClient")
+rclcpp_components_register_node(deterrence_event_trigger PLUGIN "ugv_peripherals::DeterrenceActionClient" EXECUTABLE deterrence_event_trigger)
 
 # meaning: after building, copy the resulting files () to the proper install folders for libraries and executables, so they can be used by other packages or run at runtime.”
 install(TARGETS deterrence_event_trigger
@@ -108,7 +108,6 @@ ament_target_dependencies(deterrence_event_trigger
         "rclcpp_components"
         "sensor_msgs")
 
-# END ACTION CLIENT
 
 install(DIRECTORY resource/audio_lists_wav/
   DESTINATION share/${PROJECT_NAME}/resource/audio_lists_wav

@@ -75,7 +75,7 @@ namespace ugv_peripherals
 
 			this->action_server_ = rclcpp_action::create_server<PlaySpeakers>(
 				this,
-				"speaker",
+				"speaker_action_server",
 				std::bind(&SpeakerActionServer::handle_goal, this),
 				std::bind(&SpeakerActionServer::handle_cancel, this, _1),
 				std::bind(&SpeakerActionServer::handle_accepted, this, _1)

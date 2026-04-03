@@ -57,13 +57,13 @@ namespace ugv_peripherals
                                 "blink_lights_action_server");
 
                         // safety check confirming action servers are set up 
-                        if (!this->speakers_client_ptr_->wait_for_action_server(std::chrono::seconds(5))) 
+                        if (!this->speakers_client_ptr_->wait_for_action_server(std::chrono::seconds(10))) 
                         { 
                                 RCLCPP_ERROR(this->get_logger(), "Speakers action server not available after waiting."); 
                                 rclcpp::shutdown(); 
                                 return; 
                         }
-                        if (!this->blink_lights_client_ptr_->wait_for_action_server(std::chrono::seconds(5))) 
+                        if (!this->blink_lights_client_ptr_->wait_for_action_server(std::chrono::seconds(10))) 
                         { 
                                 RCLCPP_ERROR(this->get_logger(), "Lights action server not available after waiting."); 
                                 rclcpp::shutdown(); 
@@ -71,14 +71,14 @@ namespace ugv_peripherals
                         }
 
                         detection_subscription_ = this->create_subscription<YoloStatus>(
-                        "yolo_anomaly_angle",                   // topic name
+                        "yolo_anomaly_angle",                           // topic name
                         10,                                             // QoS (queue size)
-                                std::bind(&DeterrenceActionClient::anomaly_callback, this, std::placeholders::_1)
+                        std::bind(&DeterrenceActionClient::anomaly_callback, this, std::placeholders::_1)
                         );
 
                         threshold = 0.5; 
                         feedback_forwarding = false;
-                        speakers_done = false;
+                        speakers_done = true;
                 }
 
         private:
@@ -93,9 +93,9 @@ namespace ugv_peripherals
                 void anomaly_callback(const YoloStatus msg)
                 {
                 if(msg.confidence[0] > threshold && speakers_done)                                      // if confident that there is an anomaly and no deterrence system playing
-                        {
-                                send_goal();
-                        }
+                {
+                        send_goal();
+                }
                         return; 
                 }
 
