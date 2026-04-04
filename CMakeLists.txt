@@ -47,30 +47,30 @@ install(TARGETS
 
 
 # BEGIN ACTION SERVER
-add_library(action_server SHARED
-  src/speaker_action_server.cpp)
-target_include_directories(action_server PRIVATE
+add_library(action_server_library SHARED
+  src/speaker_server.cpp)
+target_include_directories(action_server_library PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
 # FOR WINDOWS. NOT NECESSARY, CONSIDER REMOVING?
-target_compile_definitions(action_server
+target_compile_definitions(action_server_library
   PRIVATE "ACTION_SPEAKERS_CPP_BUILDING_DLL")
 
-ament_target_dependencies(action_server
+ament_target_dependencies(action_server_library
   "ugv_interfaces"
   "rclcpp"
   "rclcpp_action"
   "rclcpp_components"
   "sensor_msgs")
 
-target_link_libraries(action_server
+target_link_libraries(action_server_library
   asound
 )
 
-rclcpp_components_register_node(action_server PLUGIN "ugv_peripherals::SpeakerActionServer" EXECUTABLE speaker_action_server)
+rclcpp_components_register_node(action_server_library PLUGIN "ugv_peripherals::SpeakerActionServer" EXECUTABLE speaker_server)
 install(TARGETS
-  action_server
+  action_server_library
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
@@ -93,7 +93,7 @@ target_include_directories(deterrence_event_trigger PRIVATE
   $<INSTALL_INTERFACE:include>)
 
 # note: the plugin is the C++ class name 
-rclcpp_components_register_node(deterrence_event_trigger PLUGIN "ugv_peripherals::DeterrenceActionClient" EXECUTABLE deterrence_event_trigger)
+rclcpp_components_register_node(deterrence_event_trigger PLUGIN "ugv_peripherals::DeterrenceActionClient" EXECUTABLE deterrence_client)
 
 # meaning: after building, copy the resulting files () to the proper install folders for libraries and executables, so they can be used by other packages or run at runtime.”
 install(TARGETS deterrence_event_trigger
