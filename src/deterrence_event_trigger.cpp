@@ -121,6 +121,7 @@ namespace ugv_peripherals
                         if (!goal_handle)                                                                                       // the goal was rejected by the server
                         {
                                 RCLCPP_ERROR(this->get_logger(), "Goal rejected.");
+                                speakers_done = true;
                                 return;
                         }
                         else                                                                                                            // the goal was accepted by the server 
